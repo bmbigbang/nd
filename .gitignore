@@ -90,3 +90,6 @@ ENV/
 # Rope project settings
 .ropeproject
 
+# media files
+.mp4
+.jpg

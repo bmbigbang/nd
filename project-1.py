@@ -80,6 +80,14 @@ def hough_lines(img, rho, theta, threshold, min_line_len, max_line_gap):
     """
     lines = cv2.HoughLinesP(img, rho, theta, threshold, np.array([]), minLineLength=min_line_len,
                             maxLineGap=max_line_gap)
+    # l2 = np.copy(lines)
+    # line_img = np.zeros((*img.shape, 3), dtype=np.uint8)
+    # draw_lines(line_img, l2)
+    # plt.figure()
+    # plt.imshow(line_img)
+
+    lines = extrapolate(lines, img.shape)
+
     line_img = np.zeros((*img.shape, 3), dtype=np.uint8)
     draw_lines(line_img, lines)
     return line_img
@@ -101,16 +109,45 @@ def weighted_img(img, initial_img, α=0.8, β=1., λ=0.):
     """
     return cv2.addWeighted(initial_img, α, img, β, λ)
 
+from numpy import polyfit
+
+
+def extrapolate(lines, shape):
+    vertices = np.array([[(imshape[1] / 6, imshape[0]),  # bottom left
+                          ((imshape[1] - 40) / 2, (imshape[0] + 90) / 2),  # top left
+                          ((imshape[1] + 50) / 2, (imshape[0] + 90) / 2),  # top right
+                          (imshape[1] - (imshape[1] / 20), imshape[0])]], dtype=np.int32)  # bottom right
+    x_mid = (shape[1]) / 2; x_max = shape[1]
+    y_mid = (shape[0] + 90) / 2; y_max = shape[0]
+    left_x = []; left_y = []; right_x = []; right_y = []
+    for x0, y0, x1, y1 in [j[0] for j in lines]:
+        if x0 < x_mid and x1 < x_mid:
+            left_x.append(x0); left_x.append(x1)
+            left_y.append(y0); left_y.append(y1)
+        elif x0 > x_mid and x1 > x_mid:
+            right_x.append(x0); right_x.append(x1)
+            right_y.append(y0); right_y.append(y1)
+    left = polyfit(left_x, left_y, deg=1)
+    x0 = (imshape[0] - left[1]) / left[0]
+    x1 = (((imshape[0] + 90) / 2) - left[1]) / left[0]
+    new = [[x0, imshape[0], x1, (imshape[0] + 90) / 2]]
+
+    right = polyfit(right_x, right_y, deg=1)
+    x0 = (((imshape[0] + 90) / 2) - right[1]) / right[0]
+    x1 = (imshape[0] - right[1]) / right[0]
+    new += [[x0, (imshape[0] + 90) / 2, x1, imshape[0]]]
+    return np.array([[i] for i in new], dtype='int32')
+
 
 import os
 
-for i in os.listdir("test_images/"):
-    orig_image = mpimg.imread('test_images/{}'.format(i))
-    image = (mpimg.imread('test_images/{}'.format(i)) * 255).astype('uint8')
+for filename in os.listdir("test_images/"):
+    orig_image = mpimg.imread('test_images/{}'.format(filename))
+    image = (mpimg.imread('test_images/{}'.format(filename)) * 255).astype('uint8')
 
     gray = grayscale(image)
 
-    kernel_size = 3
+    kernel_size = 5
     blur_gray = gaussian_blur(image, kernel_size)
 
     low_threshold = 50
@@ -118,29 +155,30 @@ for i in os.listdir("test_images/"):
     edges = canny(blur_gray, low_threshold, high_threshold)
 
     imshape = image.shape
-    vertices = np.array([[(imshape[1] / 8, imshape[0]),
-                          ((imshape[1] - 40) / 2, (imshape[0] + 80) / 2),
-                          ((imshape[1] + 30) / 2, (imshape[0] + 80) / 2),
-                          (imshape[1] - (imshape[1] / 13), imshape[0])]], dtype=np.int32)
-
+    vertices = np.array([[(imshape[1] / 6, imshape[0]),  # bottom left
+                          ((imshape[1] - 40) / 2, (imshape[0] + 90) / 2),  # top left
+                          ((imshape[1] + 50) / 2, (imshape[0] + 90) / 2),  # top right
+                          (imshape[1] - (imshape[1] / 20), imshape[0])]], dtype=np.int32)  # bottom right
     # diagnose vertices
-    # mask = np.zeros_like(image)
-    # cv2.fillPoly(mask, vertices, 255)
-    # mask = cv2.bitwise_and(orig_image, mask)
-    # plt.figure()
-    # plt.imshow(mask)
+    # if i == 'solidWhiteCurve.jpg':
+    #     mask = np.zeros_like(image)
+    #     cv2.fillPoly(mask, vertices, 255)
+    #     mask = cv2.bitwise_and(orig_image, mask)
+    #     plt.figure()
+    #     plt.imshow(mask)
     masked_image = region_of_interest(edges, vertices)
 
-    rho = 0.7  # distance resolution in pixels of the Hough grid
-    theta = np.pi / 400  # angular resolution in radians of the Hough grid
-    threshold = 6  # minimum number of votes (intersections in Hough grid cell)
-    min_line_len = 22  # minimum number of pixels making up a line
-    max_line_gap = 6  # maximum gap in pixels between connectable line segments
+    rho = 0.7 # distance resolution in pixels of the Hough grid
+    theta = np.pi / 360  # angular resolution in radians of the Hough grid
+    threshold = 3  # minimum number of votes (intersections in Hough grid cell)
+    min_line_len = 10  # minimum number of pixels making up a line
+    max_line_gap = 8  # maximum gap in pixels between connectable line segments
     lines = hough_lines(masked_image, rho, theta, threshold, min_line_len, max_line_gap)
 
     w_img = weighted_img(lines, orig_image)
     plt.figure()
-    plt.xlabel('{}'.format(i))
+    plt.xlabel('{}'.format(filename))
     plt.imshow(w_img)
+    plt.imsave('test_images/Extrapolated-{}'.format(filename), w_img)
 
 plt.show()

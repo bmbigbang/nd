@@ -91,5 +91,5 @@ ENV/
 .ropeproject
 
 # media files
-.mp4
-.jpg
+*.mp4
+*.jpg

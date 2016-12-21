@@ -126,23 +126,23 @@ with graph.as_default():
 
 ### Q3. Train your model here.
 ### Feel free to use as many code cells as needed.
-    num_steps = 3001
+num_steps = 3001
 
-    with tf.Session(graph=graph) as session:
-        tf.initialize_all_variables().run()
-        print('Initialized')
-        for step in range(num_steps):
-            offset = (step * batch_size) % (train_labels.shape[0] - batch_size)
-            batch_data = train_dataset[offset:(offset + batch_size), :, :, :]
-            batch_labels = train_labels[offset:(offset + batch_size), :]
-            feed_dict = {tf_train_dataset: batch_data, tf_train_labels: batch_labels}
-            _, l, predictions = session.run(
-                [optimizer, loss, train_prediction], feed_dict=feed_dict)
-            if (step % 50 == 0):
-                print('Minibatch loss at step %d: %f' % (step, l))
-                print('Minibatch accuracy: %.1f%%' % accuracy(predictions, batch_labels))
-                print('Validation accuracy: %.1f%%' % accuracy(valid_prediction.eval(), valid_labels))
-        print('Test accuracy: %.1f%%' % accuracy(test_prediction.eval(), test_labels))
+with tf.Session(graph=graph) as session:
+    tf.initialize_all_variables().run()
+    print('Initialized')
+    for step in range(num_steps):
+        offset = (step * batch_size) % (train_labels.shape[0] - batch_size)
+        batch_data = train_dataset[offset:(offset + batch_size), :, :, :]
+        batch_labels = train_labels[offset:(offset + batch_size), :]
+        feed_dict = {tf_train_dataset: batch_data, tf_train_labels: batch_labels}
+        _, l, predictions = session.run(
+            [optimizer, loss, train_prediction], feed_dict=feed_dict)
+        if (step % 50 == 0):
+            print('Minibatch loss at step %d: %f' % (step, l))
+            print('Minibatch accuracy: %.1f%%' % accuracy(predictions, batch_labels))
+            print('Validation accuracy: %.1f%%' % accuracy(valid_prediction.eval(), valid_labels))
+    print('Test accuracy: %.1f%%' % accuracy(test_prediction.eval(), test_labels))
 
 ### Step 2. Load the images and plot them here.
 ### Feel free to use as many code cells as needed.

@@ -170,7 +170,7 @@ loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits, one_hot_y)
 
 # introducing variable learning rate
 global_step = tf.Variable(0)  # count the number of steps taken.
-learning_rate = tf.train.exponential_decay(0.00221, global_step, 400, 0.96)
+learning_rate = tf.train.exponential_decay(0.00221, global_step, 500, 0.96)
 
 # Optimizer.
 optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
@@ -182,7 +182,7 @@ training_operation = optimizer.minimize(loss, global_step=global_step)
 
 ### Q3. Train your model here.
 ### Feel free to use as many code cells as needed.
-EPOCHS = 40
+EPOCHS = 20
 
 correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(one_hot_y, 1))
 accuracy_operation = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))

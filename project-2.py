@@ -24,6 +24,7 @@ n_test = len(test['features'])
 
 # TODO: What's the shape of an traffic sign image?
 image_shape = train['features'][0].shape
+num_channels = 1 # grey scale
 
 # TODO: How many unique classes/labels there are in the dataset.
 n_classes = max(train['labels']) - min(train['labels']) + 1
@@ -70,6 +71,18 @@ plt.show()
 
 ### Step 1. Preprocess the data here.
 ### Feel free to use as many code cells as needed.
+import tensorflow as tf
+# reformat to grayscale
+X_train = X_train.reshape((-1, image_shape[0], image_shape[0], num_channels)).astype(np.float32)
+X_test = X_test.reshape((-1, image_shape[0], image_shape[0], num_channels)).astype(np.float32)
+# create validation set
+X_valid, X_test = np.split(X_test, 2)
+y_valid, y_test = np.split(y_test, 2)
+# normalize
+X_train = tf.nn.l2_normalize(X_train, [0, 0, 0])
+X_test = tf.nn.l2_normalize(X_test, [0, 0, 0])
+X_valid = tf.nn.l2_normalize(X_valid, [0, 0, 0])
+
 
 ### Q1. Generate data additional data (OPTIONAL!)
 ### and split the data into training/validation/testing sets here.
@@ -78,7 +91,6 @@ plt.show()
 ### Q2. Define your architecture here.
 ### Feel free to use as many code cells as needed.
 
-import tensorflow as tf
 
 def accuracy(predictions, labels):
   return (100.0 * np.sum(np.argmax(predictions, 1) == np.argmax(labels, 1))
@@ -93,14 +105,14 @@ graph = tf.Graph()
 with graph.as_default():
     # Input data.
     tf_train_dataset = tf.placeholder(
-        tf.float32, shape=(batch_size, image_shape[0], image_shape[1], image_shape[2]))
+        tf.float32, shape=(batch_size, image_shape[0], image_shape[1], num_channels))
     tf_train_labels = tf.placeholder(tf.float32, shape=(batch_size, n_classes))
-    tf_valid_dataset = tf.constant(valid_dataset)
-    tf_test_dataset = tf.constant(test_dataset)
+    tf_valid_dataset = tf.constant(X_valid)
+    tf_test_dataset = tf.constant(X_test)
 
     # Variables.
     layer1_weights = tf.Variable(tf.truncated_normal(
-        [filter_size, filter_size, image_shape[2], depth], stddev=0.1))
+        [filter_size, filter_size, num_channels, depth], stddev=0.1))
     layer1_biases = tf.Variable(tf.zeros([depth]))
     layer2_weights = tf.Variable(tf.truncated_normal(
         [patch_size, patch_size, depth, depth], stddev=0.1))

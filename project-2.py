@@ -3,8 +3,8 @@ import pickle
 
 # TODO: Fill this in based on where you saved the training and testing data
 
-training_file = 'training.pickle'
-testing_file = 'test.pickle'
+training_file = 'traffic-signs-data/train.p'
+testing_file = 'traffic-signs-data/test.p'
 
 with open(training_file, mode='rb') as f:
     train = pickle.load(f)
@@ -26,7 +26,7 @@ n_test = len(test['features'])
 image_shape = train['features'][0].shape
 
 # TODO: How many unique classes/labels there are in the dataset.
-n_classes = len(set([i[1] for i in train['labels'] + test['labels']]))
+n_classes = max(train['labels']) - min(train['labels']) + 1
 
 print("Number of training examples =", n_train)
 print("Number of testing examples =", n_test)
@@ -37,11 +37,35 @@ print("Number of classes =", n_classes)
 ### Feel free to use as many code cells as needed.
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-# Visualizations will be shown in the notebook.
+import numpy as np
 
-plt.imshow(dataset[22], interpolation='nearest', cmap=cm.brg)
-plt.show()
+# Visualizations will be shown in the notebook.
 # %matplotlib inline
+plt.imshow(train['features'][np.random.randint(0, len(train['features']))], interpolation='nearest', cmap=cm.brg)
+
+from collections import Counter
+with open('signnames.csv', 'r') as f:
+    temp = f.readlines()
+    sign_map = {int(i.split(",")[0]): i.split(",")[1].strip() for i in temp if not i.startswith('ClassId')}
+a = [[], [], []]; b = [[], []]
+for i in Counter(train['labels']).items():
+    if len(a[0]) < 15:
+        a[0].append([sign_map[i[0]], i[1]])
+    elif len(a[1]) < 15:
+        a[1].append([sign_map[i[0]], i[1]])
+    else:
+        a[2].append([sign_map[i[0]], i[1]])
+    b[0].append(i[0]); b[1].append(i[1])
+fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(22, 9))
+ax[0].axis('off')
+ax[1].axis('off')
+ax[2].axis('off')
+ax[0].table(cellText=a[0], colLabels=['Sign', 'Count'], loc='center', fontsize=13).auto_set_font_size(False)
+ax[1].table(cellText=a[1], colLabels=['Sign', 'Count'], loc='center', fontsize=13).auto_set_font_size(False)
+ax[2].table(cellText=a[2], colLabels=['Sign', 'Count'], loc='center', fontsize=13).auto_set_font_size(False)
+# plt.plot(b[0], b[1], label='Count of labels vs label id')
+
+plt.show()
 
 
 ### Step 1. Preprocess the data here.
@@ -54,14 +78,13 @@ plt.show()
 ### Q2. Define your architecture here.
 ### Feel free to use as many code cells as needed.
 
-import tensortflow as tf
-import numpy as np
+import tensorflow as tf
 
 def accuracy(predictions, labels):
   return (100.0 * np.sum(np.argmax(predictions, 1) == np.argmax(labels, 1))
           / predictions.shape[0])
-batch_size = 16
-patch_size = 5
+batch_size = 128
+filter_size = 5
 depth = 16
 num_hidden = 64
 
@@ -70,14 +93,14 @@ graph = tf.Graph()
 with graph.as_default():
     # Input data.
     tf_train_dataset = tf.placeholder(
-    tf.float32, shape=(batch_size, image_size, image_size, num_channels))
-    tf_train_labels = tf.placeholder(tf.float32, shape=(batch_size, num_labels))
+        tf.float32, shape=(batch_size, image_shape[0], image_shape[1], image_shape[2]))
+    tf_train_labels = tf.placeholder(tf.float32, shape=(batch_size, n_classes))
     tf_valid_dataset = tf.constant(valid_dataset)
     tf_test_dataset = tf.constant(test_dataset)
 
     # Variables.
     layer1_weights = tf.Variable(tf.truncated_normal(
-        [patch_size, patch_size, num_channels, depth], stddev=0.1))
+        [filter_size, filter_size, image_shape[2], depth], stddev=0.1))
     layer1_biases = tf.Variable(tf.zeros([depth]))
     layer2_weights = tf.Variable(tf.truncated_normal(
         [patch_size, patch_size, depth, depth], stddev=0.1))

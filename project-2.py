@@ -24,7 +24,7 @@ n_test = len(test['features'])
 
 # TODO: What's the shape of an traffic sign image?
 image_shape = train['features'][0].shape
-num_channels = 1  # grey scale
+num_channels = 3  # grey scale
 
 # TODO: How many unique classes/labels there are in the dataset.
 n_classes = max(train['labels']) - min(train['labels']) + 1
@@ -80,37 +80,37 @@ y_valid, y_test = np.split(y_test, 2)
 X_train, y_train = shuffle(X_train, y_train)
 X_test, y_test = shuffle(X_test, y_test)
 # reformat to grayscale
-temp = np.zeros_like(X_train, dtype=np.float32)
-temp = temp.reshape((-1, image_shape[0], image_shape[0], num_channels))
-for i, j in enumerate(X_train):
-    for k, l in enumerate(j):
-        temp[i][k] = np.array([np.mean(l)])
-temp = temp[:i + 1,:,:]
-X_train = temp
-
-temp = np.zeros_like(X_valid, dtype=np.float32)
-temp = temp.reshape((-1, image_shape[0], image_shape[0], num_channels))
-for i, j in enumerate(X_valid):
-    for k, l in enumerate(j):
-        temp[i][k] = np.array([np.mean(l)])
-temp = temp[:i + 1,:,:]
-X_valid = temp
-
-temp = np.zeros_like(X_test, dtype=np.float32)
-temp = temp.reshape((-1, image_shape[0], image_shape[0], num_channels))
-for i, j in enumerate(X_test):
-    for k, l in enumerate(j):
-        temp[i][k] = np.array([np.mean(l)])
-temp = temp[:i + 1,:,:]
-X_test = temp
+# temp = np.zeros_like(X_train, dtype=np.float32)
+# temp = temp.reshape((-1, image_shape[0], image_shape[0], num_channels))
+# for i, j in enumerate(X_train):
+#     for k, l in enumerate(j):
+#         temp[i][k] = np.array([np.mean(l)])
+# temp = temp[:i + 1,:,:]
+# X_train = temp
+#
+# temp = np.zeros_like(X_valid, dtype=np.float32)
+# temp = temp.reshape((-1, image_shape[0], image_shape[0], num_channels))
+# for i, j in enumerate(X_valid):
+#     for k, l in enumerate(j):
+#         temp[i][k] = np.array([np.mean(l)])
+# temp = temp[:i + 1,:,:]
+# X_valid = temp
+#
+# temp = np.zeros_like(X_test, dtype=np.float32)
+# temp = temp.reshape((-1, image_shape[0], image_shape[0], num_channels))
+# for i, j in enumerate(X_test):
+#     for k, l in enumerate(j):
+#         temp[i][k] = np.array([np.mean(l)])
+# temp = temp[:i + 1,:,:]
+# X_test = temp
 
 
 # normalize training data
-X_train = ((X_train - X_train.min()) * (X_train.min() / X_train.max())) / (X_train.max() - X_train.min())
-
-X_test = ((X_test - X_test.min()) * (X_test.min() / X_test.max())) / (X_test.max() - X_test.min())
-
-X_valid = ((X_valid - X_valid.min()) * (X_valid.min() / X_valid.max())) / (X_valid.max() - X_valid.min())
+# X_train = ((X_train - X_train.min()) * (X_train.min() / X_train.max())) / (X_train.max() - X_train.min())
+#
+# X_test = ((X_test - X_test.min()) * (X_test.min() / X_test.max())) / (X_test.max() - X_test.min())
+#
+# X_valid = ((X_valid - X_valid.min()) * (X_valid.min() / X_valid.max())) / (X_valid.max() - X_valid.min())
 
 ### Q1. Generate data additional data (OPTIONAL!)
 ### and split the data into training/validation/testing sets here.
@@ -121,7 +121,7 @@ X_valid = ((X_valid - X_valid.min()) * (X_valid.min() / X_valid.max())) / (X_val
 
 from tensorflow.contrib.layers import flatten
 
-batch_size = 32
+batch_size = 64
 filter_size = 5
 depth = 6
 depth2 = 16
@@ -170,7 +170,8 @@ loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits, one_hot_y)
 
 # introducing variable learning rate
 global_step = tf.Variable(0)  # count the number of steps taken.
-learning_rate = tf.train.exponential_decay(0.01, global_step, 60000, 0.99)
+learning_rate = tf.train.exponential_decay(0.00221, global_step, 400, 0.96)
+
 # Optimizer.
 optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 training_operation = optimizer.minimize(loss, global_step=global_step)
@@ -181,7 +182,7 @@ training_operation = optimizer.minimize(loss, global_step=global_step)
 
 ### Q3. Train your model here.
 ### Feel free to use as many code cells as needed.
-EPOCHS = 1000
+EPOCHS = 40
 
 correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(one_hot_y, 1))
 accuracy_operation = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
@@ -200,9 +201,8 @@ def evaluate(X_data, y_data):
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
     num_examples = len(X_train)
-
-    print("Training...")
-    print()
+    X_train, y_train = shuffle(X_train, y_train)
+    print("Training...", "\n")
     for i in range(EPOCHS):
         for offset in range(0, num_examples, batch_size):
             end = offset + batch_size

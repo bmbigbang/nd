@@ -120,34 +120,41 @@ X_valid = ((X_valid - X_valid.min()) * (X_valid.min() / X_valid.max())) / (X_val
 ### Feel free to use as many code cells as needed.
 
 from tensorflow.contrib.layers import flatten
-def accuracy(predictions, labels):
-  return (100.0 * np.sum(np.argmax(predictions, 1) == np.argmax(labels, 1))
-          / predictions.shape[0])
-batch_size = 128
+
+batch_size = 32
 filter_size = 5
 depth = 6
 depth2 = 16
 
 
 def model(data):
+    layer1_weights = tf.Variable(tf.truncated_normal(
+        [filter_size, filter_size, num_channels, depth], mean=0, stddev=0.1))
+    layer1_biases = tf.Variable(tf.zeros(depth))
     conv1 = tf.nn.conv2d(data, filter=layer1_weights, strides=[1, 1, 1, 1], padding='VALID')
     conv1 = tf.nn.max_pool(conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
     conv1 = tf.nn.relu(conv1 + layer1_biases)
+
+    layer2_weights = tf.Variable(tf.truncated_normal(
+        [filter_size, filter_size, depth, depth2], mean=0, stddev=0.1))
+    layer2_biases = tf.Variable(tf.zeros(depth2))
     conv2 = tf.nn.conv2d(conv1, filter=layer2_weights, strides=[1, 1, 1, 1], padding='VALID')
     conv2 = tf.nn.max_pool(conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
     conv2 = tf.nn.relu(conv2 + layer2_biases)
+
     fc0 = flatten(conv2)
     fc1_W = tf.Variable(tf.truncated_normal(shape=(400, 120), mean=0, stddev=0.1))
     fc1_b = tf.Variable(tf.zeros(120))
     fc1 = tf.nn.relu(tf.matmul(fc0, fc1_W) + fc1_b)
+
     fc2_W = tf.Variable(tf.truncated_normal(shape=(120, 84), mean=0, stddev=0.1))
     fc2_b = tf.Variable(tf.zeros(84))
     fc2 = tf.nn.relu(tf.matmul(fc1, fc2_W) + fc2_b)
+
     fc3_W = tf.Variable(tf.truncated_normal(shape=(84, n_classes),  mean=0, stddev=0.1))
     fc3_b = tf.Variable(tf.zeros(n_classes))
 
-    # dropout layer
-    keep_prob = tf.Variable(0.5)
+    keep_prob = tf.Variable(0.5)  # dropout layer
     return tf.nn.dropout(tf.matmul(fc2, fc3_W) + fc3_b, keep_prob)
 
 
@@ -155,12 +162,7 @@ def model(data):
 # Variables and Input data.
 tf_train_dataset = tf.placeholder(tf.float32, shape=(None, image_shape[0], image_shape[1], num_channels))
 tf_train_labels = tf.placeholder(tf.int32, shape=(None))
-layer1_weights = tf.Variable(tf.truncated_normal(
-    [filter_size, filter_size, num_channels, depth], mean=0, stddev=0.1))
-layer1_biases = tf.Variable(tf.zeros(depth))
-layer2_weights = tf.Variable(tf.truncated_normal(
-    [filter_size, filter_size, depth, depth2], mean=0, stddev=0.1))
-layer2_biases = tf.Variable(tf.zeros(depth2))
+
 # Training computation.
 one_hot_y = tf.one_hot(tf_train_labels, n_classes)
 logits = model(tf_train_dataset)
@@ -168,7 +170,7 @@ loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits, one_hot_y)
 
 # introducing variable learning rate
 global_step = tf.Variable(0)  # count the number of steps taken.
-learning_rate = tf.train.exponential_decay(0.002, global_step, 15000, 0.96)
+learning_rate = tf.train.exponential_decay(0.01, global_step, 60000, 0.99)
 # Optimizer.
 optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 training_operation = optimizer.minimize(loss, global_step=global_step)
@@ -179,10 +181,11 @@ training_operation = optimizer.minimize(loss, global_step=global_step)
 
 ### Q3. Train your model here.
 ### Feel free to use as many code cells as needed.
-EPOCHS = 10
+EPOCHS = 1000
 
 correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(one_hot_y, 1))
 accuracy_operation = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
 
 def evaluate(X_data, y_data):
     num_examples = len(X_data)

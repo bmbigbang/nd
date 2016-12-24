@@ -215,20 +215,50 @@ with tf.Session() as sess:
         test_accuracy = evaluate(X_test, y_test)
         print("Test Accuracy = {:.3f}".format(test_accuracy))
 
-# try:
-#     saver
-# except NameError:
-#     saver = tf.train.Saver()
-# saver.save(sess, 'lenet')
-# print("Model saved")
+    try:
+        saver
+    except NameError:
+        saver = tf.train.Saver()
+    save_path = saver.save(sess, 'ts')
+    print("Model saved to {}".format(save_path))
 
 ### Step 2. Load the images and plot them here.
 ### Feel free to use as many code cells as needed.
+# import os
+# import cv2
+#
+# new_files = []
+# for i in os.listdir('traffic_signs'):
+#     if i.endswith('.p'):
+#         continue
+#     print(i)
+#     img = cv2.imread('traffic_signs/{}'.format(i))
+#     res = cv2.resize(img, dsize=(32, 32), interpolation=cv2.INTER_CUBIC)
+#     new_files.append(res)
+#     del img
+
+with open('traffic_signs/traf.p', 'rb') as f:
+    new_files = pickle.load(f)
+
+# %matplotlib inline
+for i in new_files:
+    plt.imshow(i, interpolation='nearest', cmap=cm.brg)
 
 
 ### Q6. Run the predictions here.
 ### Feel free to use as many code cells as needed.
-
+with tf.Session() as sess:
+    new_saver = tf.train.import_meta_graph('ts.meta')
+    new_saver.restore(sess, tf.train.latest_checkpoint('./'))
+    sess.run(tf.global_variables_initializer())
+    num_examples = len(new_files)
+    softmax_predictions = sess.run(tf.nn.softmax(logits), feed_dict={tf_train_dataset: new_files,
+                                                                     tf_train_labels: [26, 3, 15, 14, 23]})
+    predictions = [[(i, k) for i, k in enumerate(softmax_predictions[j]) if k >= 1e-4]
+                   for j in range(len(softmax_predictions))]
+    accuracy = sess.run(accuracy_operation, feed_dict={tf_train_dataset: new_files,
+                                                                     tf_train_labels: [26, 3, 15, 14, 23]})
+    print("Real Image Test Accuracy = {:.3f}".format(accuracy))
 ### Q7. Visualize the softmax probabilities here.
 ### Feel free to use as many code cells as needed.
 

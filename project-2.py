@@ -73,6 +73,7 @@ ax[2].table(cellText=a[2], colLabels=['Sign', 'Count'], loc='center', fontsize=1
 ### Feel free to use as many code cells as needed.
 import tensorflow as tf
 from sklearn.utils import shuffle
+from sklearn.preprocessing import normalize
 # create validation set
 X_valid, X_test = np.split(X_test, 2)
 y_valid, y_test = np.split(y_test, 2)
@@ -84,33 +85,52 @@ X_test, y_test = shuffle(X_test, y_test)
 # temp = temp.reshape((-1, image_shape[0], image_shape[0], num_channels))
 # for i, j in enumerate(X_train):
 #     for k, l in enumerate(j):
-#         temp[i][k] = np.array([np.mean(l)])
-# temp = temp[:i + 1,:,:]
+#         temp[i][k] = np.mean(l)
+# temp = temp[:i + 1, :, :]
 # X_train = temp
-#
+# #
 # temp = np.zeros_like(X_valid, dtype=np.float32)
 # temp = temp.reshape((-1, image_shape[0], image_shape[0], num_channels))
 # for i, j in enumerate(X_valid):
 #     for k, l in enumerate(j):
-#         temp[i][k] = np.array([np.mean(l)])
-# temp = temp[:i + 1,:,:]
+#         temp[i][k] = np.mean(l)
+# temp = temp[:i + 1, :, :]
 # X_valid = temp
 #
 # temp = np.zeros_like(X_test, dtype=np.float32)
 # temp = temp.reshape((-1, image_shape[0], image_shape[0], num_channels))
 # for i, j in enumerate(X_test):
 #     for k, l in enumerate(j):
-#         temp[i][k] = np.array([np.mean(l)])
-# temp = temp[:i + 1,:,:]
+#         temp[i][k] = np.mean(l)
+# temp = temp[:i + 1, :, :]
 # X_test = temp
 
-
 # normalize training data
-# X_train = ((X_train - X_train.min()) * (X_train.min() / X_train.max())) / (X_train.max() - X_train.min())
+# l2
+# temp = np.zeros_like(X_train, dtype=np.float32)
+# for i, j in enumerate(X_train):
+#     for k, l in enumerate(j):
+#         temp[i][k] = normalize(l, axis=0, norm='l2')
+# X_train = temp
+# #
+# temp = np.zeros_like(X_valid, dtype=np.float32)
+# for i, j in enumerate(X_valid):
+#     for k, l in enumerate(j):
+#         temp[i][k] = normalize(l, axis=0, norm='l2')
+# X_valid = temp
 #
-# X_test = ((X_test - X_test.min()) * (X_test.min() / X_test.max())) / (X_test.max() - X_test.min())
-#
-# X_valid = ((X_valid - X_valid.min()) * (X_valid.min() / X_valid.max())) / (X_valid.max() - X_valid.min())
+# temp = np.zeros_like(X_test, dtype=np.float32)
+# for i, j in enumerate(X_test):
+#     for k, l in enumerate(j):
+#         temp[i][k] = normalize(l, axis=0, norm='l2')
+# X_test = temp
+
+# simple scaling
+X_train = ((X_train - X_train.min()) / (X_train.max() - X_train.min()))
+
+X_test = ((X_test - X_test.min()) / (X_test.max() - X_test.min()))
+
+X_valid = ((X_valid - X_valid.min()) / (X_valid.max() - X_valid.min()))
 
 ### Q1. Generate data additional data (OPTIONAL!)
 ### and split the data into training/validation/testing sets here.
@@ -132,15 +152,17 @@ def model(data):
         [filter_size, filter_size, num_channels, depth], mean=0, stddev=0.1))
     layer1_biases = tf.Variable(tf.zeros(depth))
     conv1 = tf.nn.conv2d(data, filter=layer1_weights, strides=[1, 1, 1, 1], padding='VALID')
-    conv1 = tf.nn.max_pool(conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
-    conv1 = tf.nn.relu(conv1 + layer1_biases)
+    conv1 = tf.nn.avg_pool(conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
+    keep_prob1 = tf.Variable(1.0)  # dropout layer
+    conv1 = tf.nn.relu(tf.nn.dropout(conv1 + layer1_biases, keep_prob1))
 
     layer2_weights = tf.Variable(tf.truncated_normal(
         [filter_size, filter_size, depth, depth2], mean=0, stddev=0.1))
     layer2_biases = tf.Variable(tf.zeros(depth2))
     conv2 = tf.nn.conv2d(conv1, filter=layer2_weights, strides=[1, 1, 1, 1], padding='VALID')
-    conv2 = tf.nn.max_pool(conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
-    conv2 = tf.nn.relu(conv2 + layer2_biases)
+    conv2 = tf.nn.avg_pool(conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
+    keep_prob2 = tf.Variable(1.0)  # dropout layer
+    conv2 = tf.nn.relu(tf.nn.dropout(conv2 + layer2_biases, keep_prob2))
 
     fc0 = flatten(conv2)
     fc1_W = tf.Variable(tf.truncated_normal(shape=(400, 120), mean=0, stddev=0.1))
@@ -154,8 +176,7 @@ def model(data):
     fc3_W = tf.Variable(tf.truncated_normal(shape=(84, n_classes),  mean=0, stddev=0.1))
     fc3_b = tf.Variable(tf.zeros(n_classes))
 
-    keep_prob = tf.Variable(0.5)  # dropout layer
-    return tf.nn.dropout(tf.matmul(fc2, fc3_W) + fc3_b, keep_prob)
+    return tf.matmul(fc2, fc3_W) + fc3_b
 
 
 
@@ -170,7 +191,7 @@ loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits, one_hot_y)
 
 # introducing variable learning rate
 global_step = tf.Variable(0)  # count the number of steps taken.
-learning_rate = tf.train.exponential_decay(0.00221, global_step, 500, 0.96)
+learning_rate = tf.train.exponential_decay(0.00221, global_step, 1500, 0.96)
 
 # Optimizer.
 optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
@@ -182,7 +203,7 @@ training_operation = optimizer.minimize(loss, global_step=global_step)
 
 ### Q3. Train your model here.
 ### Feel free to use as many code cells as needed.
-EPOCHS = 20
+EPOCHS = 70
 
 correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(one_hot_y, 1))
 accuracy_operation = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
@@ -244,6 +265,16 @@ with open('traffic_signs/traf.p', 'rb') as f:
 for i in new_files:
     plt.imshow(i, interpolation='nearest', cmap=cm.brg)
 
+# temp = np.zeros_like(new_files, dtype=np.float32)
+# temp = temp.reshape((-1, image_shape[0], image_shape[0], num_channels))
+# for i, j in enumerate(new_files):
+#     for k, l in enumerate(j):
+#         temp[i][k] = np.mean(l)
+# temp = temp[:i + 1, :, :]
+# new_files = temp
+
+# normalize the new image data
+new_files = ((new_files - np.min(new_files)) / (np.max(new_files) - np.min(new_files)))
 
 ### Q6. Run the predictions here.
 ### Feel free to use as many code cells as needed.
@@ -259,7 +290,13 @@ with tf.Session() as sess:
     accuracy = sess.run(accuracy_operation, feed_dict={tf_train_dataset: new_files,
                                                                      tf_train_labels: [26, 3, 15, 14, 23]})
     print("Real Image Test Accuracy = {:.3f}".format(accuracy))
-### Q7. Visualize the softmax probabilities here.
+
+### Visualize the softmax probabilities here.
 ### Feel free to use as many code cells as needed.
+import operator
+print('(Label, probability) for all predictions above 1%')
+for i, j in zip(predictions, [26, 3, 15, 14, 23]):
+    i = sorted(i, reverse=True, key=operator.itemgetter(1))[:5]
+    print('Is correct label {} in top 10?'.format(j), j in [ii[0] for ii in i], '-', i)
 
 ### Q8. Use the model's softmax probabilities to visualize the certainty of its predictions

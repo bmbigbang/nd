@@ -126,11 +126,11 @@ X_test, y_test = shuffle(X_test, y_test)
 # X_test = temp
 
 # simple scaling
-X_train = ((X_train - X_train.min()) / (X_train.max() - X_train.min()))
+X_train = ((X_train - X_train.min()) / (X_train.max() - X_train.min())) + 0.1
 
-X_test = ((X_test - X_test.min()) / (X_test.max() - X_test.min()))
+X_test = ((X_test - X_test.min()) / (X_test.max() - X_test.min())) + 0.1
 
-X_valid = ((X_valid - X_valid.min()) / (X_valid.max() - X_valid.min()))
+X_valid = ((X_valid - X_valid.min()) / (X_valid.max() - X_valid.min())) + 0.1
 
 ### Q1. Generate data additional data (OPTIONAL!)
 ### and split the data into training/validation/testing sets here.
@@ -143,8 +143,8 @@ from tensorflow.contrib.layers import flatten
 
 batch_size = 64
 filter_size = 5
-depth = 6
-depth2 = 16
+depth = 15
+depth2 = 40
 
 
 def model(data):
@@ -153,7 +153,7 @@ def model(data):
     layer1_biases = tf.Variable(tf.zeros(depth))
     conv1 = tf.nn.conv2d(data, filter=layer1_weights, strides=[1, 1, 1, 1], padding='VALID')
     conv1 = tf.nn.avg_pool(conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
-    keep_prob1 = tf.Variable(1.0)  # dropout layer
+    keep_prob1 = tf.Variable(0.5)  # dropout layer
     conv1 = tf.nn.relu(tf.nn.dropout(conv1 + layer1_biases, keep_prob1))
 
     layer2_weights = tf.Variable(tf.truncated_normal(
@@ -161,22 +161,22 @@ def model(data):
     layer2_biases = tf.Variable(tf.zeros(depth2))
     conv2 = tf.nn.conv2d(conv1, filter=layer2_weights, strides=[1, 1, 1, 1], padding='VALID')
     conv2 = tf.nn.avg_pool(conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
-    keep_prob2 = tf.Variable(1.0)  # dropout layer
+    keep_prob2 = tf.Variable(0.5)  # dropout layer
     conv2 = tf.nn.relu(tf.nn.dropout(conv2 + layer2_biases, keep_prob2))
 
     fc0 = flatten(conv2)
-    fc1_W = tf.Variable(tf.truncated_normal(shape=(400, 120), mean=0, stddev=0.1))
-    fc1_b = tf.Variable(tf.zeros(120))
+    fc1_W = tf.Variable(tf.truncated_normal(shape=(1000, 400), mean=0, stddev=0.1))
+    fc1_b = tf.Variable(tf.zeros(400))
     fc1 = tf.nn.relu(tf.matmul(fc0, fc1_W) + fc1_b)
 
-    fc2_W = tf.Variable(tf.truncated_normal(shape=(120, 84), mean=0, stddev=0.1))
-    fc2_b = tf.Variable(tf.zeros(84))
-    fc2 = tf.nn.relu(tf.matmul(fc1, fc2_W) + fc2_b)
+    # fc2_W = tf.Variable(tf.truncated_normal(shape=(240, 84), mean=0, stddev=0.1))
+    # fc2_b = tf.Variable(tf.zeros(84))
+    # fc2 = tf.nn.relu(tf.matmul(fc1, fc2_W) + fc2_b)
 
-    fc3_W = tf.Variable(tf.truncated_normal(shape=(84, n_classes),  mean=0, stddev=0.1))
+    fc3_W = tf.Variable(tf.truncated_normal(shape=(400, n_classes),  mean=0, stddev=0.01))
     fc3_b = tf.Variable(tf.zeros(n_classes))
 
-    return tf.matmul(fc2, fc3_W) + fc3_b
+    return tf.matmul(fc1, fc3_W) + fc3_b
 
 
 
@@ -191,7 +191,7 @@ loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits, one_hot_y)
 
 # introducing variable learning rate
 global_step = tf.Variable(0)  # count the number of steps taken.
-learning_rate = tf.train.exponential_decay(0.00221, global_step, 1500, 0.96)
+learning_rate = tf.train.exponential_decay(0.00221, global_step, 1000, 0.96)
 
 # Optimizer.
 optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
@@ -203,7 +203,7 @@ training_operation = optimizer.minimize(loss, global_step=global_step)
 
 ### Q3. Train your model here.
 ### Feel free to use as many code cells as needed.
-EPOCHS = 70
+EPOCHS = 100
 
 correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(one_hot_y, 1))
 accuracy_operation = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
@@ -297,6 +297,6 @@ import operator
 print('(Label, probability) for all predictions above 1%')
 for i, j in zip(predictions, [26, 3, 15, 14, 23]):
     i = sorted(i, reverse=True, key=operator.itemgetter(1))[:5]
-    print('Is correct label {} in top 10?'.format(j), j in [ii[0] for ii in i], '-', i)
+    print('Is correct label {} in top 5?'.format(j), j in [ii[0] for ii in i], '-', i)
 
 ### Q8. Use the model's softmax probabilities to visualize the certainty of its predictions

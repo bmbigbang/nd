@@ -51,180 +51,82 @@ X_test, y_test = features[:int(len(features)/10)], labels[:int(len(features)/10)
 features, labels = features[int(len(features)/10):], labels[int(len(features)/10):]
 image_shape = (160, 320, 3)
 nb_epoch = 10
+batch_size = 128
 
 
-def generator():
-    import cv2
-    for i, j in zip(features, labels):
+class generator:
+    def __init__(self, X, y, batch_size=128):
+        self.X = X
+        self.y = y
+        self.batch_size = batch_size
+        self.step = 0
 
-        img = cv2.imread('behavioural_cloning/IMG/{}'.format(i))
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    def g(self):
+        import cv2
+        while True:
+            feat, lab = [], []
+            step = self.step * self.batch_size
+            if not self.X[step:step + self.batch_size]:
+                self.step = 0; step = 0
+            else:
+                self.step += 1
+            for i, j in zip(self.X[step:step + self.batch_size], self.y[step:step + self.batch_size]):
 
-        kernel_size = 3
-        blur_gray = cv2.GaussianBlur(img, (kernel_size, kernel_size), 0)
+                img = cv2.imread('behavioural_cloning/IMG/{}'.format(i))
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        low_threshold = 30
-        high_threshold = 220
-        canny = cv2.Canny(blur_gray, low_threshold, high_threshold)
+                kernel_size = 3
+                blur_gray = cv2.GaussianBlur(img, (kernel_size, kernel_size), 0)
 
-        rho = 0.7  # distance resolution in pixels of the Hough grid
-        theta = np.pi / 450  # angular resolution in radians of the Hough grid
-        threshold = 2  # minimum number of votes (intersections in Hough grid cell)
-        min_line_len = 7  # minimum number of pixels making up a line
-        max_line_gap = 7  # maximum gap in pixels between connectable line segments
-        lines = cv2.HoughLinesP(canny, rho, theta, threshold, np.array([]), minLineLength=min_line_len,
-                                maxLineGap=max_line_gap)
+                low_threshold = 30
+                high_threshold = 220
+                canny = cv2.Canny(blur_gray, low_threshold, high_threshold)
 
-        line_img = np.zeros(img.shape, dtype=np.uint8)
-        imshape = img.shape
-        color = [255, 0, 0];
-        thickness = 1
-        for line in lines:
-            for x1, y1, x2, y2 in line:
-                if x1 > (imshape[1] + 120) / 2 and x2 > (imshape[1] + 120) / 2:
+                rho = 0.7  # distance resolution in pixels of the Hough grid
+                theta = np.pi / 450  # angular resolution in radians of the Hough grid
+                threshold = 2  # minimum number of votes (intersections in Hough grid cell)
+                min_line_len = 7  # minimum number of pixels making up a line
+                max_line_gap = 7  # maximum gap in pixels between connectable line segments
+                lines = cv2.HoughLinesP(canny, rho, theta, threshold, np.array([]), minLineLength=min_line_len,
+                                        maxLineGap=max_line_gap)
 
-                    if 0.75 < ((y2 - y1) / (x2 - x1)) < 1.25:
-                        cv2.line(img, (x1, y1), (x2, y2), color, thickness)
-                elif x1 < (imshape[1] - 120) / 2 and x2 < (imshape[1] - 120) / 2:
-                    if -0.75 > ((y2 - y1) / (x2 - x1)) > -1.25:
-                        cv2.line(line_img, (x1, y1), (x2, y2), color, thickness)
+                line_img = np.zeros(img.shape, dtype=np.uint8)
+                imshape = img.shape
+                color = [255, 0, 0]
+                thickness = 1
+                for line in lines:
+                    for x1, y1, x2, y2 in line:
+                        if x1 > (imshape[1] + 120) / 2 and x2 > (imshape[1] + 120) / 2:
 
-        mask = np.zeros_like(img)
-        vertices = np.array([
-            [(((imshape[1] - 80) / 2), ((imshape[0] + 20) / 2)),
-             (0, imshape[0]),  # bottom left
-             (0, (imshape[0] * 6 / 12)),  # mid left
-             ((imshape[1] - 100) / 2, (imshape[0] - 40) / 2),  # top left
-             ((imshape[1] + 100) / 2, (imshape[0] - 40) / 2),  # top right
-             (imshape[1], (imshape[0] * 7 / 12)),  # mid right
-             (imshape[1], imshape[0]),  # bottom right
-             (imshape[1], imshape[0]),
-             (((imshape[1] + 60) / 2), ((imshape[0] + 20) / 2))]
-        ], dtype=np.int32)
-        cv2.fillPoly(mask, vertices, (255, 255, 255))
+                            if x2 != x1 and 0.75 < ((y2 - y1) / (x2 - x1)) < 1.25:
+                                cv2.line(img, (x1, y1), (x2, y2), color, thickness)
+                        elif x1 < (imshape[1] - 120) / 2 and x2 < (imshape[1] - 120) / 2:
+                            if x2 != x1 and -0.75 > ((y2 - y1) / (x2 - x1)) > -1.25:
+                                cv2.line(line_img, (x1, y1), (x2, y2), color, thickness)
 
-        # returning the image only where mask pixels are nonzero
-        masked_image = cv2.bitwise_and(line_img, mask)
-        # plt.imshow(masked_image, interpolation='nearest')
-        # plt.show()
-        yield np.array(masked_image).astype(np.float64) + 0.01, j
+                mask = np.zeros_like(img)
+                vertices = np.array([
+                    [(((imshape[1] - 80) / 2), ((imshape[0] + 20) / 2)),
+                     (0, imshape[0]),  # bottom left
+                     (0, (imshape[0] * 6 / 12)),  # mid left
+                     ((imshape[1] - 100) / 2, (imshape[0] - 40) / 2),  # top left
+                     ((imshape[1] + 100) / 2, (imshape[0] - 40) / 2),  # top right
+                     (imshape[1], (imshape[0] * 7 / 12)),  # mid right
+                     (imshape[1], imshape[0]),  # bottom right
+                     (imshape[1], imshape[0]),
+                     (((imshape[1] + 60) / 2), ((imshape[0] + 20) / 2))]
+                ], dtype=np.int32)
+                cv2.fillPoly(mask, vertices, (255, 255, 255))
 
+                # returning the image only where mask pixels are nonzero
+                masked_image = cv2.bitwise_and(line_img, mask)
+                # plt.imshow(masked_image, interpolation='nearest')
+                # plt.show()
+                feat.append(masked_image), lab.append(np.float32(j))
 
-def generator_test():
-    import cv2
-    for i, j in zip(X_test, y_test):
-
-        img = cv2.imread('behavioural_cloning/IMG/{}'.format(i))
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-        kernel_size = 3
-        blur_gray = cv2.GaussianBlur(img, (kernel_size, kernel_size), 0)
-
-        low_threshold = 30
-        high_threshold = 220
-        canny = cv2.Canny(blur_gray, low_threshold, high_threshold)
-
-        rho = 0.7  # distance resolution in pixels of the Hough grid
-        theta = np.pi / 450  # angular resolution in radians of the Hough grid
-        threshold = 2  # minimum number of votes (intersections in Hough grid cell)
-        min_line_len = 7  # minimum number of pixels making up a line
-        max_line_gap = 7  # maximum gap in pixels between connectable line segments
-        lines = cv2.HoughLinesP(canny, rho, theta, threshold, np.array([]), minLineLength=min_line_len,
-                                maxLineGap=max_line_gap)
-
-        line_img = np.zeros(img.shape, dtype=np.uint8)
-        imshape = img.shape
-        color = [255, 0, 0];
-        thickness = 1
-        for line in lines:
-            for x1, y1, x2, y2 in line:
-                if x1 > (imshape[1] + 120) / 2 and x2 > (imshape[1] + 120) / 2:
-
-                    if 0.75 < ((y2 - y1) / (x2 - x1)) < 1.25:
-                        cv2.line(img, (x1, y1), (x2, y2), color, thickness)
-                elif x1 < (imshape[1] - 120) / 2 and x2 < (imshape[1] - 120) / 2:
-                    if -0.75 > ((y2 - y1) / (x2 - x1)) > -1.25:
-                        cv2.line(line_img, (x1, y1), (x2, y2), color, thickness)
-
-        mask = np.zeros_like(img)
-        vertices = np.array([
-            [(((imshape[1] - 80) / 2), ((imshape[0] + 20) / 2)),
-             (0, imshape[0]),  # bottom left
-             (0, (imshape[0] * 6 / 12)),  # mid left
-             ((imshape[1] - 100) / 2, (imshape[0] - 40) / 2),  # top left
-             ((imshape[1] + 100) / 2, (imshape[0] - 40) / 2),  # top right
-             (imshape[1], (imshape[0] * 7 / 12)),  # mid right
-             (imshape[1], imshape[0]),  # bottom right
-             (imshape[1], imshape[0]),
-             (((imshape[1] + 60) / 2), ((imshape[0] + 20) / 2))]
-        ], dtype=np.int32)
-        cv2.fillPoly(mask, vertices, (255, 255, 255))
-
-        # returning the image only where mask pixels are nonzero
-        masked_image = cv2.bitwise_and(line_img, mask)
-        # plt.imshow(masked_image, interpolation='nearest')
-        # plt.show()
-        yield np.array(masked_image).astype(np.float64) + 0.01, j
+            yield np.array(feat).astype(np.float32) + 0.01, np.array(lab)
 
 
-def generator_valid():
-    import cv2
-    for i, j in zip(X_valid, y_valid):
-
-        img = cv2.imread('behavioural_cloning/IMG/{}'.format(i))
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-        kernel_size = 3
-        blur_gray = cv2.GaussianBlur(img, (kernel_size, kernel_size), 0)
-
-        low_threshold = 30
-        high_threshold = 220
-        canny = cv2.Canny(blur_gray, low_threshold, high_threshold)
-
-        rho = 0.7  # distance resolution in pixels of the Hough grid
-        theta = np.pi / 450  # angular resolution in radians of the Hough grid
-        threshold = 2  # minimum number of votes (intersections in Hough grid cell)
-        min_line_len = 7  # minimum number of pixels making up a line
-        max_line_gap = 7  # maximum gap in pixels between connectable line segments
-        lines = cv2.HoughLinesP(canny, rho, theta, threshold, np.array([]), minLineLength=min_line_len,
-                                maxLineGap=max_line_gap)
-
-        line_img = np.zeros(img.shape, dtype=np.uint8)
-        imshape = img.shape
-        color = [255, 0, 0];
-        thickness = 1
-        for line in lines:
-            for x1, y1, x2, y2 in line:
-                if x1 > (imshape[1] + 120) / 2 and x2 > (imshape[1] + 120) / 2:
-
-                    if 0.75 < ((y2 - y1) / (x2 - x1)) < 1.25:
-                        cv2.line(img, (x1, y1), (x2, y2), color, thickness)
-                elif x1 < (imshape[1] - 120) / 2 and x2 < (imshape[1] - 120) / 2:
-                    if -0.75 > ((y2 - y1) / (x2 - x1)) > -1.25:
-                        cv2.line(line_img, (x1, y1), (x2, y2), color, thickness)
-
-        mask = np.zeros_like(img)
-        vertices = np.array([
-            [(((imshape[1] - 80) / 2), ((imshape[0] + 20) / 2)),
-             (0, imshape[0]),  # bottom left
-             (0, (imshape[0] * 6 / 12)),  # mid left
-             ((imshape[1] - 100) / 2, (imshape[0] - 40) / 2),  # top left
-             ((imshape[1] + 100) / 2, (imshape[0] - 40) / 2),  # top right
-             (imshape[1], (imshape[0] * 7 / 12)),  # mid right
-             (imshape[1], imshape[0]),  # bottom right
-             (imshape[1], imshape[0]),
-             (((imshape[1] + 60) / 2), ((imshape[0] + 20) / 2))]
-        ], dtype=np.int32)
-        cv2.fillPoly(mask, vertices, (255, 255, 255))
-
-        # returning the image only where mask pixels are nonzero
-        masked_image = cv2.bitwise_and(line_img, mask)
-        # plt.imshow(masked_image, interpolation='nearest')
-        # plt.show()
-        yield np.array(masked_image).astype(np.float64) + 0.01, j
-
-
-from keras.preprocessing.image import ImageDataGenerator
 from keras.models import Sequential
 from keras.layers import Dense, Conv2D, Flatten, MaxPooling2D, Activation
 from keras.layers import Dropout
@@ -240,23 +142,49 @@ from keras.optimizers import SGD
 # datagen.fit(X_train)
 
 model = Sequential()
-model.add(Conv2D(6, 5, 5, input_shape=image_shape))
-model.add(MaxPooling2D((2, 2)))
+model.add(Conv2D(nb_filter=6, nb_row=5, nb_col=5, input_shape=image_shape, init='normal',
+                 border_mode='valid', activation='relu', dim_ordering='tf'))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+model.add(Dropout(0.5))
+model.add(Activation('relu'))
+model.add(Conv2D(nb_filter=16, nb_row=7, nb_col=7, init='normal',
+                 border_mode='valid', activation='relu', dim_ordering='tf'))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+model.add(Dropout(0.5))
+model.add(Activation('relu'))
+model.add(Conv2D(nb_filter=28, nb_row=5, nb_col=5, init='normal',
+                 border_mode='valid', activation='relu', dim_ordering='tf'))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+model.add(Dropout(0.5))
+model.add(Activation('relu'))
+model.add(Conv2D(nb_filter=42, nb_row=5, nb_col=5, init='normal',
+                 border_mode='valid', activation='relu', dim_ordering='tf'))
+model.add(MaxPooling2D(pool_size=(2, 2)))
 model.add(Dropout(0.5))
 model.add(Activation('relu'))
 model.add(Flatten())
-model.add(Dense(73944, activation='relu'))
-# model.add(Dense(2000, init='uniform', input_dim=390600))
+model.add(Dense(128, init='normal',  activation='relu'))
+model.add(Dense(1, init='normal', activation='relu'))
 model.add(Activation('tanh'))
-model.add(Activation('softmax'))
+# model.add(Activation('softmax'))
 model.summary()
 sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
-model.compile(loss='mean_squared_error', optimizer=sgd)
+model.compile(loss='mean_squared_error', optimizer=sgd, metrics=["accuracy"])
 # history = model.fit(X_train, y_train,
 #                     batch_size=128, nb_epoch=nb_epoch,
 #                     verbose=1, validation_data=(X_valid, y_valid))
-model.fit_generator(generator(), callbacks=[], validation_data=generator_valid(),
-                    nb_val_samples=len(X_valid), samples_per_epoch=len(features)/nb_epoch, nb_epoch=nb_epoch)
+
+gen = generator(features, labels, batch_size=batch_size).g()
+test_gen = generator(X_test, y_test, batch_size=batch_size).g()
+for epoch in range(nb_epoch):
+    X, y = next(gen)
+    X_t, y_t = next(test_gen)
+    model.train_on_batch(X, y)
+    model.test_on_batch(X_t, y_t)
+# model.fit_generator(generator(features, labels, batch_size=batch_size).g(), int(len(features)/nb_epoch),
+#                     nb_epoch, nb_worker=1, verbose=2, callbacks=[],
+#                     validation_data=generator(X_valid, y_valid, batch_size=batch_size).g(),
+#                     nb_val_samples=len(X_valid))
 
 
 

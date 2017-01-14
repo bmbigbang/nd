@@ -58,6 +58,7 @@ class generator:
     def __init__(self, X, y, batch_size=128):
         self.X = X
         self.y = y
+        self.X, self.y = shuffle(self.X, self.y, random_state=0)
         self.batch_size = batch_size
         self.step = 0
 
@@ -124,13 +125,15 @@ class generator:
                 # plt.show()
                 feat.append(masked_image), lab.append(np.float32(j))
 
-            yield np.array(feat).astype(np.float32) + 0.01, np.array(lab)
+            # normalize by diving by (maximum - minimum) after subtracting minimum
+            # add a small constant (0.01) to shift away from 0 for better performance operations
+            yield (np.array(feat).astype(np.float32) / 255.0) + 0.01, np.array(lab)
 
 
 from keras.models import Sequential
 from keras.layers import Dense, Conv2D, Flatten, MaxPooling2D, Activation
 from keras.layers import Dropout
-from keras.optimizers import SGD
+from keras.optimizers import SGD, Adagrad, Adam
 
 # datagen = ImageDataGenerator(
 #     featurewise_center=False,
@@ -142,45 +145,76 @@ from keras.optimizers import SGD
 # datagen.fit(X_train)
 
 model = Sequential()
-model.add(Conv2D(nb_filter=6, nb_row=5, nb_col=5, input_shape=image_shape, init='normal',
-                 border_mode='valid', activation='relu', dim_ordering='tf'))
+model.add(Conv2D(nb_filter=4, nb_row=7, nb_col=7, input_shape=image_shape, init='normal',
+                 border_mode='valid', dim_ordering='tf'))
 model.add(MaxPooling2D(pool_size=(2, 2)))
 model.add(Dropout(0.5))
 model.add(Activation('relu'))
-model.add(Conv2D(nb_filter=16, nb_row=7, nb_col=7, init='normal',
-                 border_mode='valid', activation='relu', dim_ordering='tf'))
+model.add(Conv2D(nb_filter=10, nb_row=7, nb_col=7, init='normal',
+                 border_mode='valid', dim_ordering='tf'))
 model.add(MaxPooling2D(pool_size=(2, 2)))
 model.add(Dropout(0.5))
 model.add(Activation('relu'))
-model.add(Conv2D(nb_filter=28, nb_row=5, nb_col=5, init='normal',
-                 border_mode='valid', activation='relu', dim_ordering='tf'))
+model.add(Conv2D(nb_filter=15, nb_row=7, nb_col=7, init='normal',
+                 border_mode='valid', dim_ordering='tf'))
 model.add(MaxPooling2D(pool_size=(2, 2)))
 model.add(Dropout(0.5))
 model.add(Activation('relu'))
-model.add(Conv2D(nb_filter=42, nb_row=5, nb_col=5, init='normal',
-                 border_mode='valid', activation='relu', dim_ordering='tf'))
-model.add(MaxPooling2D(pool_size=(2, 2)))
-model.add(Dropout(0.5))
-model.add(Activation('relu'))
+# model.add(Conv2D(nb_filter=23, nb_row=5, nb_col=5, init='normal',
+#                  border_mode='valid', dim_ordering='tf'))
+# model.add(MaxPooling2D(pool_size=(2, 2)))
+# model.add(Dropout(0.5))
+# model.add(Activation('relu'))
 model.add(Flatten())
-model.add(Dense(128, init='normal',  activation='relu'))
+model.add(Dense(40, init='normal',  activation='relu'))
 model.add(Dense(1, init='normal', activation='relu'))
-model.add(Activation('tanh'))
 # model.add(Activation('softmax'))
 model.summary()
 sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+# optimizer = Adam(lr=0.02, decay=0.001)
 model.compile(loss='mean_squared_error', optimizer=sgd, metrics=["accuracy"])
 # history = model.fit(X_train, y_train,
 #                     batch_size=128, nb_epoch=nb_epoch,
 #                     verbose=1, validation_data=(X_valid, y_valid))
 
-gen = generator(features, labels, batch_size=batch_size).g()
-test_gen = generator(X_test, y_test, batch_size=batch_size).g()
 for epoch in range(nb_epoch):
-    X, y = next(gen)
-    X_t, y_t = next(test_gen)
-    model.train_on_batch(X, y)
-    model.test_on_batch(X_t, y_t)
+    gen = generator(features, labels, batch_size=batch_size).g()
+    test_gen = generator(X_test, y_test, batch_size=batch_size).g()
+    valid_gen = generator(X_valid, y_valid, batch_size=batch_size).g()
+
+    training_accuracy = []
+    training_loss = []
+    for step in range(len(features) % batch_size):
+        X, y = next(gen)
+        metrics = model.train_on_batch(X, y)
+        training_accuracy.append(metrics[1])
+        training_loss.append(metrics[0])
+        print(repr(metrics))
+
+    step += 1
+    print('Epoch {}  Loss: {}'.format(epoch + 1, sum(training_loss) / step))
+    print('Training Accuracy: {}'.format(sum(training_accuracy) / step))
+
+    testing_accuracy = []
+    testing_loss = []
+    for step in range(len(X_test) % batch_size):
+        X_t, y_t = next(test_gen)
+        _ = model.test_on_batch(X_t, y_t)
+        testing_accuracy.append(_[1])
+        testing_loss.append(_[0])
+    step += 1
+    print('Testing Loss/Accuracy: {} - {}'.format(sum(testing_loss) / step, sum(testing_accuracy) / step))
+
+    valid_accuracy = []
+    valid_loss = []
+    for step in range(len(X_valid) % batch_size):
+        X_v, y_v = next(valid_gen)
+        _ = model.test_on_batch(X_v, y_v)
+        valid_accuracy.append(_[1])
+        valid_loss.append(_[0])
+    step += 1
+    print('Validation Loss/Accuracy: {} - {}'.format(sum(valid_loss) / step, sum(valid_accuracy) / step))
+
 # model.fit_generator(generator(features, labels, batch_size=batch_size).g(), int(len(features)/nb_epoch),
 #                     nb_epoch, nb_worker=1, verbose=2, callbacks=[],
 #                     validation_data=generator(X_valid, y_valid, batch_size=batch_size).g(),

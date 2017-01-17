@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import pandas
 
 with open('behavioural_cloning/driving_log.csv', 'r') as f:
@@ -19,6 +18,8 @@ def process_images(n=[], labels=[]):
             print(i)
             continue
         if not i.startswith('center'):
+            continue
+        if abs(float(labels_dict[i])) < 0.1:
             continue
 
         n.append(i)
@@ -50,8 +51,8 @@ features, labels = shuffle(features, labels, random_state=0)
 X_test, y_test = features[:int(len(features)/10)], labels[:int(len(features)/10)]
 features, labels = features[int(len(features)/10):], labels[int(len(features)/10):]
 image_shape = (160, 320, 3)
-nb_epoch = 1
-batch_size = 128
+nb_epoch = 5
+batch_size = 64
 
 
 class generator:
@@ -72,9 +73,10 @@ class generator:
             else:
                 self.step += 1
             for i, j in zip(self.X[step:step + self.batch_size], self.y[step:step + self.batch_size]):
-
                 img = cv2.imread('behavioural_cloning/IMG/{}'.format(i))
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                # img = cv2.resize(img, (160, 80), interpolation=cv2.INTER_CUBIC)
+
                 imshape = img.shape
                 mask = np.zeros_like(img)
                 vertices = np.array([
@@ -152,11 +154,11 @@ class generator:
                 # np.array([[iii] for iii in new], dtype='int32')
                 for line in np.array([[iii] for iii in new], dtype='int32'):
                     for x1, y1, x2, y2 in line:
-                        cv2.line(line_img, (x1, y1), (x2, y2), color, thickness)
+                        cv2.line(img, (x1, y1), (x2, y2), color, thickness)
 
-                # plt.imshow(masked_image, interpolation='nearest')
+                # plt.imshow(img, interpolation='nearest')
                 # plt.show()
-                feat.append(line_img), lab.append(np.float32(j))
+                feat.append(img), lab.append(np.float32(j))
 
             # normalize by diving by (maximum - minimum) after subtracting minimum
             # add a small constant (0.01) to shift away from 0 for better performance operations
@@ -166,7 +168,7 @@ class generator:
 from keras.models import Sequential
 from keras.layers import Dense, Conv2D, Flatten, MaxPooling2D, Activation
 from keras.layers import Dropout
-from keras.optimizers import SGD, Adagrad, Adam
+from keras.optimizers import SGD, Nadam, Adam
 
 # datagen = ImageDataGenerator(
 #     featurewise_center=False,
@@ -178,35 +180,30 @@ from keras.optimizers import SGD, Adagrad, Adam
 # datagen.fit(X_train)
 
 model = Sequential()
-model.add(Conv2D(nb_filter=6, nb_row=7, nb_col=7, input_shape=image_shape, init='normal',
-                 border_mode='valid', dim_ordering='tf'))
-model.add(MaxPooling2D(pool_size=(2, 2)))
+model.add(Conv2D(nb_filter=24, nb_row=10, nb_col=20, subsample=(2, 2), input_shape=image_shape
+                 , init='normal', border_mode='valid', dim_ordering='tf'))
+model.add(Conv2D(nb_filter=36, nb_row=8, nb_col=16, init='normal', subsample=(2, 2),
+                 border_mode='valid', dim_ordering='tf', activation='relu'))
 model.add(Dropout(0.5))
-model.add(Activation('relu'))
-model.add(Conv2D(nb_filter=8, nb_row=7, nb_col=7, init='normal',
-                 border_mode='valid', dim_ordering='tf'))
-model.add(MaxPooling2D(pool_size=(2, 2)))
+model.add(Conv2D(nb_filter=48, nb_row=6, nb_col=8, init='normal', subsample=(2, 2),
+                 border_mode='valid', dim_ordering='tf', activation='relu'))
+model.add(Conv2D(nb_filter=64, nb_row=3, nb_col=3, init='normal', subsample=(1, 1),
+                 border_mode='valid', dim_ordering='tf', activation='relu'))
 model.add(Dropout(0.5))
-model.add(Activation('relu'))
-model.add(Conv2D(nb_filter=11, nb_row=7, nb_col=7, init='normal',
-                 border_mode='valid', dim_ordering='tf'))
-model.add(MaxPooling2D(pool_size=(2, 2)))
-model.add(Dropout(0.5))
-model.add(Activation('relu'))
-model.add(Conv2D(nb_filter=13, nb_row=7, nb_col=7, init='normal',
-                 border_mode='valid', dim_ordering='tf'))
-model.add(MaxPooling2D(pool_size=(2, 2)))
-model.add(Dropout(0.5))
-model.add(Activation('relu'))
+model.add(Conv2D(nb_filter=64, nb_row=3, nb_col=3, init='normal', subsample=(1, 1),
+                 border_mode='valid', dim_ordering='tf', activation='relu'))
 model.add(Flatten())
-model.add(Dense(32, init='normal',  activation='relu'))
-model.add(Dense(11, init='normal',  activation='relu'))
-model.add(Dense(1, init='normal', activation='relu'))
+model.add(Activation('relu'))
+model.add(Dense(1164, activation='relu'))
+
+model.add(Dense(100, activation='relu'))
+model.add(Dense(1, activation='relu'))
+
 # model.add(Activation('softmax'))
 model.summary()
-# sgd = SGD(lr=0.001, decay=1e-6, momentum=0.9, nesterov=True)
-optimizer = Adam(lr=0.02, decay=0.001)
-model.compile(loss='mean_squared_error', optimizer=optimizer, metrics=["accuracy"])
+# sgd = SGD(lr=0.1, decay=1e-3, momentum=0.9, nesterov=True)
+# optimizer = Adam(lr=0.01, decay=0.0)
+model.compile(loss='mean_squared_error', optimizer=Nadam())
 # history = model.fit(X_train, y_train,
 #                     batch_size=128, nb_epoch=nb_epoch,
 #                     verbose=1, validation_data=(X_valid, y_valid))
@@ -216,38 +213,30 @@ for epoch in range(nb_epoch):
     test_gen = generator(X_test, y_test, batch_size=batch_size).g()
     valid_gen = generator(X_valid, y_valid, batch_size=batch_size).g()
 
-    training_accuracy = []
     training_loss = []
     for step in range(len(features) % batch_size):
         X, y = next(gen)
         metrics = model.train_on_batch(X, y)
-        training_accuracy.append(metrics[1])
-        training_loss.append(metrics[0])
-        print(repr(metrics))
+        training_loss.append(metrics)
 
     step += 1
     print('Epoch {}  Loss: {}'.format(epoch + 1, sum(training_loss) / step))
-    print('Training Accuracy: {}'.format(sum(training_accuracy) / step))
 
-    testing_accuracy = []
     testing_loss = []
     for step in range(len(X_test) % batch_size):
         X_t, y_t = next(test_gen)
         _ = model.test_on_batch(X_t, y_t)
-        testing_accuracy.append(_[1])
-        testing_loss.append(_[0])
+        testing_loss.append(_)
     step += 1
-    print('Testing Loss/Accuracy: {} - {}'.format(sum(testing_loss) / step, sum(testing_accuracy) / step))
+    print('Testing Loss: {}'.format(sum(testing_loss) / step))
 
-    valid_accuracy = []
     valid_loss = []
     for step in range(len(X_valid) % batch_size):
         X_v, y_v = next(valid_gen)
         _ = model.test_on_batch(X_v, y_v)
-        valid_accuracy.append(_[1])
-        valid_loss.append(_[0])
+        valid_loss.append(_)
     step += 1
-    print('Validation Loss/Accuracy: {} - {}'.format(sum(valid_loss) / step, sum(valid_accuracy) / step))
+    print('Validation Loss: {}'.format(sum(valid_loss) / step))
 
 with open('behavioural_cloning/model.json', 'w+') as f:
     f.write(model.to_json())

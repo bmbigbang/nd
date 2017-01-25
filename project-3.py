@@ -19,8 +19,8 @@ def process_images(n=[], labels=[]):
             continue
         if not i.startswith('center'):
             continue
-        if abs(float(labels_dict[i])) < 0.1:
-            continue
+        # if abs(float(labels_dict[i])) < 0.05:
+        #     labels_dict[i] = 0.05
 
         n.append(i)
         labels.append(labels_dict[i])
@@ -47,28 +47,35 @@ from sklearn.utils import shuffle
 
 X_valid, y_valid = features[:int(len(features)/10)], labels[:int(len(features)/10)]
 features, labels = features[int(len(features)/10):], labels[int(len(features)/10):]
-features, labels = shuffle(features, labels, random_state=0)
+features, labels = shuffle(features, labels, random_state=1)
 X_test, y_test = features[:int(len(features)/10)], labels[:int(len(features)/10)]
 features, labels = features[int(len(features)/10):], labels[int(len(features)/10):]
 image_shape = (160, 320, 3)
 nb_epoch = 5
 batch_size = 64
 
-
+from random import randint
 class generator:
-    def __init__(self, X, y, batch_size=128):
+    def __init__(self, X, y, batch_size=128, training=False):
         self.X = X
         self.y = y
-        self.X, self.y = shuffle(self.X, self.y, random_state=0)
+        self.X, self.y = shuffle(self.X, self.y, random_state=1)
         self.batch_size = batch_size
         self.step = 0
+        if training:
+            temp = np.sort(np.dstack((np.exp(np.abs(np.float32(y))), self.X)), axis=1)
+            self.X = temp[0][:, 1]
+            self.y = np.sign(np.float32(y)) * np.array(temp[0][:, 0]).astype(np.float32)
+        else:
+            self.y = np.sign(np.float32(y)) * np.exp(np.abs(np.float32(y)))
+        self.y[self.y == 0.] = np.float32(randint(0, 1) or -1)
 
     def g(self):
         import cv2
         while True:
-            feat, lab = [], []
+            feat, lab = [], np.array([])
             step = self.step * self.batch_size
-            if not self.X[step:step + self.batch_size]:
+            if not len(self.X[step:step + self.batch_size]):
                 self.step = 0; step = 0
             else:
                 self.step += 1
@@ -158,11 +165,11 @@ class generator:
 
                 # plt.imshow(img, interpolation='nearest')
                 # plt.show()
-                feat.append(img), lab.append(np.float32(j))
+                feat.append(img); lab = np.append(lab, j)
 
             # normalize by diving by (maximum - minimum) after subtracting minimum
             # add a small constant (0.01) to shift away from 0 for better performance operations
-            yield (np.array(feat).astype(np.float32) / 255.0) + 0.01, np.array(lab)
+            yield (np.array(feat).astype(np.float32) / 255.0) + 0.01, lab
 
 
 from keras.models import Sequential
@@ -201,15 +208,15 @@ model.add(Dense(1, activation='relu'))
 
 # model.add(Activation('softmax'))
 model.summary()
-# sgd = SGD(lr=0.1, decay=1e-3, momentum=0.9, nesterov=True)
+sgd = SGD(lr=0.1, decay=1e-2, momentum=0.9, nesterov=True)
 # optimizer = Adam(lr=0.01, decay=0.0)
-model.compile(loss='mean_squared_error', optimizer=Nadam())
+model.compile(loss='mean_squared_error', optimizer=sgd)
 # history = model.fit(X_train, y_train,
 #                     batch_size=128, nb_epoch=nb_epoch,
 #                     verbose=1, validation_data=(X_valid, y_valid))
 
 for epoch in range(nb_epoch):
-    gen = generator(features, labels, batch_size=batch_size).g()
+    gen = generator(features, labels, batch_size=batch_size, training=True).g()
     test_gen = generator(X_test, y_test, batch_size=batch_size).g()
     valid_gen = generator(X_valid, y_valid, batch_size=batch_size).g()
 

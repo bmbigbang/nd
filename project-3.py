@@ -51,24 +51,24 @@ features, labels = shuffle(features, labels, random_state=1)
 X_test, y_test = features[:int(len(features)/10)], labels[:int(len(features)/10)]
 features, labels = features[int(len(features)/10):], labels[int(len(features)/10):]
 image_shape = (160, 320, 3)
-nb_epoch = 5
+nb_epoch = 50
 batch_size = 64
 
 from random import randint
 class generator:
     def __init__(self, X, y, batch_size=128, training=False):
         self.X = X
-        self.y = y
+        self.y = np.float32(y)
         self.X, self.y = shuffle(self.X, self.y, random_state=1)
+        # if training:
+        #     temp = np.sort(np.dstack((np.exp(self.y), self.X, self.y)), axis=1)
+        #     self.X = temp[0][::-1][:, 1]
+        #     self.y = np.sign(np.array(temp[0][::-1][:, 2])) * np.array(temp[0][::-1][:, 0])
+        # else:
+        # self.y = np.sign(self.y) * np.exp(np.abs(self.y))
+        # self.y[self.y == 0.] = np.float32(randint(0, 1) or -1)
         self.batch_size = batch_size
         self.step = 0
-        if training:
-            temp = np.sort(np.dstack((np.exp(np.abs(np.float32(y))), self.X)), axis=1)
-            self.X = temp[0][:, 1]
-            self.y = np.sign(np.float32(y)) * np.array(temp[0][:, 0]).astype(np.float32)
-        else:
-            self.y = np.sign(np.float32(y)) * np.exp(np.abs(np.float32(y)))
-        self.y[self.y == 0.] = np.float32(randint(0, 1) or -1)
 
     def g(self):
         import cv2
@@ -163,9 +163,11 @@ class generator:
                     for x1, y1, x2, y2 in line:
                         cv2.line(img, (x1, y1), (x2, y2), color, thickness)
 
+                # visualise the individual processed images here if necessary
                 # plt.imshow(img, interpolation='nearest')
                 # plt.show()
-                feat.append(img); lab = np.append(lab, j)
+                feat.append(img)
+                lab = np.append(lab, j)
 
             # normalize by diving by (maximum - minimum) after subtracting minimum
             # add a small constant (0.01) to shift away from 0 for better performance operations
@@ -173,47 +175,34 @@ class generator:
 
 
 from keras.models import Sequential
-from keras.layers import Dense, Conv2D, Flatten, MaxPooling2D, Activation
+from keras.layers import Dense, Conv2D, Flatten
 from keras.layers import Dropout
-from keras.optimizers import SGD, Nadam, Adam
+from keras.optimizers import Nadam
 
-# datagen = ImageDataGenerator(
-#     featurewise_center=False,
-#     featurewise_std_normalization=False,
-#     rotation_range=20,
-#     width_shift_range=0.2,
-#     height_shift_range=0.2,
-#     horizontal_flip=True)
-# datagen.fit(X_train)
 
 model = Sequential()
-model.add(Conv2D(nb_filter=24, nb_row=10, nb_col=20, subsample=(2, 2), input_shape=image_shape
-                 , init='normal', border_mode='valid', dim_ordering='tf'))
-model.add(Conv2D(nb_filter=36, nb_row=8, nb_col=16, init='normal', subsample=(2, 2),
-                 border_mode='valid', dim_ordering='tf', activation='relu'))
+model.add(Conv2D(nb_filter=24, nb_row=5, nb_col=5, subsample=(2, 2), input_shape=image_shape,
+                 init='normal', border_mode='valid', dim_ordering='tf', activation='linear'))
 model.add(Dropout(0.5))
-model.add(Conv2D(nb_filter=48, nb_row=6, nb_col=8, init='normal', subsample=(2, 2),
-                 border_mode='valid', dim_ordering='tf', activation='relu'))
-model.add(Conv2D(nb_filter=64, nb_row=3, nb_col=3, init='normal', subsample=(1, 1),
-                 border_mode='valid', dim_ordering='tf', activation='relu'))
+model.add(Conv2D(nb_filter=36, nb_row=5, nb_col=5, init='normal', subsample=(2, 2),
+                 border_mode='valid', dim_ordering='tf', activation='linear'))
+model.add(Dropout(0.5))
+model.add(Conv2D(nb_filter=48, nb_row=5, nb_col=5, init='normal', subsample=(2, 2),
+                 border_mode='valid', dim_ordering='tf', activation='linear'))
 model.add(Dropout(0.5))
 model.add(Conv2D(nb_filter=64, nb_row=3, nb_col=3, init='normal', subsample=(1, 1),
-                 border_mode='valid', dim_ordering='tf', activation='relu'))
+                 border_mode='valid', dim_ordering='tf', activation='linear'))
+model.add(Dropout(0.5))
+model.add(Conv2D(nb_filter=64, nb_row=3, nb_col=3, init='normal', subsample=(1, 1),
+                 border_mode='valid', dim_ordering='tf', activation='linear'))
 model.add(Flatten())
-model.add(Activation('relu'))
-model.add(Dense(1164, activation='relu'))
-
-model.add(Dense(100, activation='relu'))
-model.add(Dense(1, activation='relu'))
-
-# model.add(Activation('softmax'))
+model.add(Dense(1164, activation='linear'))
+model.add(Dense(100, activation='linear'))
+model.add(Dense(50, activation='linear'))
+model.add(Dense(10, activation='linear'))
+model.add(Dense(1, activation='linear'))
 model.summary()
-sgd = SGD(lr=0.1, decay=1e-2, momentum=0.9, nesterov=True)
-# optimizer = Adam(lr=0.01, decay=0.0)
-model.compile(loss='mean_squared_error', optimizer=sgd)
-# history = model.fit(X_train, y_train,
-#                     batch_size=128, nb_epoch=nb_epoch,
-#                     verbose=1, validation_data=(X_valid, y_valid))
+model.compile(loss='mean_squared_error', optimizer=Nadam())
 
 for epoch in range(nb_epoch):
     gen = generator(features, labels, batch_size=batch_size, training=True).g()
@@ -221,37 +210,34 @@ for epoch in range(nb_epoch):
     valid_gen = generator(X_valid, y_valid, batch_size=batch_size).g()
 
     training_loss = []
-    for step in range(len(features) % batch_size):
+    for st in range(len(features) % batch_size):
         X, y = next(gen)
         metrics = model.train_on_batch(X, y)
         training_loss.append(metrics)
 
-    step += 1
-    print('Epoch {}  Loss: {}'.format(epoch + 1, sum(training_loss) / step))
+    st += 1
+    print('Epoch {}  Loss: {}'.format(epoch + 1, sum(training_loss) / st))
 
     testing_loss = []
-    for step in range(len(X_test) % batch_size):
+    for st in range(len(X_test) % batch_size):
         X_t, y_t = next(test_gen)
         _ = model.test_on_batch(X_t, y_t)
         testing_loss.append(_)
-    step += 1
-    print('Testing Loss: {}'.format(sum(testing_loss) / step))
+    st += 1
+    print('Testing Loss: {}'.format(sum(testing_loss) / st))
 
     valid_loss = []
     for step in range(len(X_valid) % batch_size):
         X_v, y_v = next(valid_gen)
         _ = model.test_on_batch(X_v, y_v)
         valid_loss.append(_)
-    step += 1
-    print('Validation Loss: {}'.format(sum(valid_loss) / step))
+    st += 1
+    print('Validation Loss: {}'.format(sum(valid_loss) / st))
 
 with open('behavioural_cloning/model.json', 'w+') as f:
     f.write(model.to_json())
 model.save_weights('behavioural_cloning/model.h5')
-# model.fit_generator(generator(features, labels, batch_size=batch_size).g(), int(len(features)/nb_epoch),
-#                     nb_epoch, nb_worker=1, verbose=2, callbacks=[],
-#                     validation_data=generator(X_valid, y_valid, batch_size=batch_size).g(),
-#                     nb_val_samples=len(X_valid))
+
 
 
 

@@ -13,6 +13,7 @@ from flask import Flask, render_template
 from io import BytesIO
 
 from keras.models import model_from_json
+from keras.optimizers import Nadam
 from keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array
 
 # Fix error with Keras and TensorFlow
@@ -40,11 +41,8 @@ def telemetry(sid, data):
 
     transformed_image_array = image_array[None, :, :, :]
     # This model currently assumes that the features of the model are just the images. Feel free to change this.
-    a = np.float32(model.predict(transformed_image_array, batch_size=1))
-    if np.abs(a) <= 1:
-        steering_angle = 0
-    else:
-        steering_angle = np.sign(a) * np.log(np.abs(a))
+    a = float(model.predict(transformed_image_array, batch_size=1))
+    steering_angle = a
     # The driving model currently just outputs a constant throttle. Feel free to edit this.
     throttle = 0.2
     print(steering_angle, throttle)
@@ -138,7 +136,7 @@ def process_image(img):
 
     # plt.imshow(img, interpolation='nearest')
     # plt.show()
-    return img
+    return (np.array(img).astype(np.float32) / 255.0) + 0.01
 
 
 @sio.on('connect')
@@ -168,8 +166,7 @@ if __name__ == '__main__':
         # instead.
         model = model_from_json(jfile.read())
 
-
-    model.compile("adam", "mse")
+    model.compile(loss='mean_squared_error', optimizer=Nadam())
     weights_file = args.model.replace('json', 'h5')
     model.load_weights(weights_file)
 

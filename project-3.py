@@ -27,9 +27,7 @@ def process_images(n=[], labels=[]):
         # pick center only files
         if not i.startswith('center'):
             continue
-        # discard near zero values
-        # if abs(float(labels_dict[i])) * 180/3.14 < 0.05:
-        #     continue
+
         n.append(i)
         labels.append(labels_dict[i])
 
@@ -45,8 +43,8 @@ features, labels = shuffle(features, labels, random_state=0)
 X_test, y_test = features[:int(len(features)/10)], labels[:int(len(features)/10)]
 features, labels = features[int(len(features)/10):], labels[int(len(features)/10):]
 # set image and batch processing parameters
-image_shape = (160, 320, 3)
-nb_epoch = 10
+image_shape = (160 / 2, 320 / 2, 3)
+nb_epoch = 15
 batch_size = 128
 
 
@@ -77,64 +75,11 @@ class Generator:
                 # read the image and convert colours
                 img = cv2.imread('behavioural_cloning/IMG/{}'.format(i))
 
-                # img = cv2.resize(img, (160, 80))
-
-                imshape = img.shape
-
-                # use gaussian blurring for better matching of edges to actual lines than artifacts
-                R = img[:, :, 2]
-                R_thresh = (200, 255)
-
+                img = cv2.resize(img, (160, 80))
                 hls = cv2.cvtColor(img, cv2.COLOR_BGR2HLS)
-                S = hls[:, :, 2]
-                H = hls[:, :, 0]
-                S_thresh = (90, 255)
-                H_thresh = (15, 100)
-                mask = np.zeros_like(S)
-                mask[((S > S_thresh[0]) & (S <= S_thresh[1])) |
-                     ((R > R_thresh[0]) & (R <= R_thresh[1])) |
-                     ((H > H_thresh[0]) & (H <= H_thresh[1]))] = 1
-                combined_color = mask
-                # visualize the colour thresholding image here if necessary
-                # plt.imshow(mask, interpolation='nearest')
-                # plt.show()
 
-                # sobelx = cv2.Sobel(combined_color, cv2.CV_64F, 1, 0, ksize=3)
-                # sobely = cv2.Sobel(combined_color, cv2.CV_64F, 0, 1, ksize=3)
-                # 3) Take the absolute value of the x and y gradients
-                # x = np.absolute(sobelx)
-                # y = np.absolute(sobely)
-                # 4) Use np.arctan2(abs_sobely, abs_sobelx) to calculate the direction of the gradient
-                # g = np.arctan2(y, x)
-                # 5) Create a binary mask where direction thresholds are met
-                # mask = np.zeros_like(combined_color)
-                # sobel_thresh = (0.3, 1.7)
-                # mask[(g >= sobel_thresh[0]) & (g <= sobel_thresh[1])] = 1
-                # visualize the sorbel image here if necessary
-                # plt.imshow(mask, interpolation='nearest')
-                # plt.show()
-
-                shape_mask = np.zeros_like(mask)
-                # vertices are of two trapezoids with the most significant parts of the road
-                vertices = np.array([
-                    [(((imshape[1] - 60) / 2), ((imshape[0] + 40) / 2)),
-                     (50, imshape[0]),
-                     (0, imshape[0]),  # bottom left
-                     (0, (imshape[0] - 30) / 2),  # mid left
-                     ((imshape[1] - 140) / 2, (imshape[0] - 40) / 2),  # top left
-                     ((imshape[1] + 140) / 2, (imshape[0] - 40) / 2),  # top right
-                     (imshape[1], (imshape[0] - 30) / 2),  # mid right
-                     (imshape[1], imshape[0]),  # bottom right
-                     (imshape[1] - 50, imshape[0]),
-                     (((imshape[1] + 60) / 2), ((imshape[0] + 40) / 2))]
-                ], dtype=np.int32)
-                cv2.fillPoly(shape_mask, vertices, (255, 255, 255))
-
-                # returning the image only where mask pixels are nonzero
-                masked_image = cv2.bitwise_and(mask, shape_mask)
-                hls[masked_image == 0.] = np.array([0., 0., 0.])
                 # visualise the individual processed images here if necessary
-                # plt.imshow(hls, interpolation='nearest')
+                # plt.imshow(masked_image, interpolation='nearest')
                 # plt.show()
                 feat.append((hls.astype(np.float32) / 255.0) + 0.01)
                 lab = np.append(lab, j)
@@ -149,10 +94,10 @@ model = Sequential()
 model.add(Conv2D(nb_filter=24, nb_row=5, nb_col=5, subsample=(2, 2), input_shape=image_shape,
                  init='normal', border_mode='valid', dim_ordering='tf', activation='linear'))
 model.add(Dropout(0.5))
-model.add(Conv2D(nb_filter=28, nb_row=5, nb_col=5, init='normal', subsample=(2, 2),
+model.add(Conv2D(nb_filter=34, nb_row=5, nb_col=5, init='normal', subsample=(2, 2),
                  border_mode='valid', dim_ordering='tf', activation='linear'))
 model.add(Dropout(0.5))
-model.add(Conv2D(nb_filter=32, nb_row=5, nb_col=5, init='normal', subsample=(2, 2),
+model.add(Conv2D(nb_filter=44, nb_row=5, nb_col=5, init='normal', subsample=(2, 2),
                  border_mode='valid', dim_ordering='tf', activation='linear'))
 model.add(Dropout(0.5))
 model.add(Conv2D(nb_filter=52, nb_row=3, nb_col=3, init='normal', subsample=(1, 1),
@@ -161,13 +106,14 @@ model.add(Dropout(0.5))
 model.add(Conv2D(nb_filter=52, nb_row=3, nb_col=3, init='normal', subsample=(1, 1),
                  border_mode='valid', dim_ordering='tf', activation='linear'))
 model.add(Flatten())
-model.add(Dense(1114, activation='linear'))
+model.add(Dense(1124, activation='linear'))
 model.add(Dense(100, activation='linear'))
 model.add(Dense(50, activation='linear'))
 model.add(Dense(10, activation='linear'))
 model.add(Dense(1, activation='linear'))
 model.summary()
-# use Nadam() for enhanced learning rate of small image set
+# use Nadam() with default learning rate parameters for randomized learning rate of small image set
+# allows faster exploration of the hyper parameters by treating learning rate as a parameter to be learnt
 model.compile(loss='mean_squared_error', optimizer=Nadam())
 
 for epoch in range(nb_epoch):
@@ -183,8 +129,7 @@ for epoch in range(nb_epoch):
         metrics = model.train_on_batch(X, y)
         training_loss.append(metrics)
 
-    st += 1
-    print('Epoch {}  Loss: {}'.format(epoch + 1, sum(training_loss) / st))
+    print('Epoch {}  Loss: {}'.format(epoch + 1, sum(training_loss) / (st + 1)))
 
     testing_loss = []
     for st in range(len(X_test) % batch_size):
@@ -192,16 +137,16 @@ for epoch in range(nb_epoch):
         X_t, y_t = next(test_gen)
         _ = model.test_on_batch(X_t, y_t)
         testing_loss.append(_)
-    st += 1
-    print('Testing Loss: {}'.format(sum(testing_loss) / st))
+
+    print('Testing Loss: {}'.format(sum(testing_loss) / (st + 1)))
 
     valid_loss = []
     for step in range(len(X_valid) % batch_size):
         X_v, y_v = next(valid_gen)
         _ = model.test_on_batch(X_v, y_v)
         valid_loss.append(_)
-    st += 1
-    print('Validation Loss: {}'.format(sum(valid_loss) / st))
+
+    print('Validation Loss: {}'.format(sum(valid_loss) / (st + 1)))
 
 # save files
 with open('behavioural_cloning/model.json', 'w+') as f:

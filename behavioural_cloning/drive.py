@@ -51,61 +51,9 @@ def telemetry(sid, data):
 
 def process_image(img):
     import cv2
-    # img = cv2.resize(img, (160, 80))
-    imshape = img.shape
-
-    # use gaussian blurring for better matching of edges to actual lines than artifacts
-    R = img[:, :, 2]
-    R_thresh = (200, 255)
-
-    hls = cv2.cvtColor(img, cv2.COLOR_BGR2HLS)
-    S = hls[:, :, 2]
-    H = hls[:, :, 0]
-    S_thresh = (90, 255)
-    H_thresh = (15, 100)
-    mask = np.zeros_like(S)
-    mask[((S > S_thresh[0]) & (S <= S_thresh[1])) |
-         ((R > R_thresh[0]) & (R <= R_thresh[1])) |
-         ((H > H_thresh[0]) & (H <= H_thresh[1]))] = 1
-    combined_color = mask
-    # visualize the colour thresholding image here if necessary
-    # plt.imshow(mask, interpolation='nearest')
-    # plt.show()
-
-    # sobelx = cv2.Sobel(combined_color, cv2.CV_64F, 1, 0, ksize=3)
-    # sobely = cv2.Sobel(combined_color, cv2.CV_64F, 0, 1, ksize=3)
-    # 3) Take the absolute value of the x and y gradients
-    # x = np.absolute(sobelx)
-    # y = np.absolute(sobely)
-    # 4) Use np.arctan2(abs_sobely, abs_sobelx) to calculate the direction of the gradient
-    # g = np.arctan2(y, x)
-    # 5) Create a binary mask where direction thresholds are met
-    # mask = np.zeros_like(combined_color)
-    # sobel_thresh = (0.3, 1.7)
-    # mask[(g >= sobel_thresh[0]) & (g <= sobel_thresh[1])] = 1
-    # visualize the sorbel image here if necessary
-    # plt.imshow(mask, interpolation='nearest')
-    # plt.show()
-
-    shape_mask = np.zeros_like(mask)
-    # vertices are of two trapezoids with the most significant parts of the road
-    vertices = np.array([
-        [(((imshape[1] - 60) / 2), ((imshape[0] + 40) / 2)),
-         (50, imshape[0]),
-         (0, imshape[0]),  # bottom left
-         (0, (imshape[0] - 30) / 2),  # mid left
-         ((imshape[1] - 140) / 2, (imshape[0] - 40) / 2),  # top left
-         ((imshape[1] + 140) / 2, (imshape[0] - 40) / 2),  # top right
-         (imshape[1], (imshape[0] - 30) / 2),  # mid right
-         (imshape[1], imshape[0]),  # bottom right
-         (imshape[1] - 50, imshape[0]),
-         (((imshape[1] + 60) / 2), ((imshape[0] + 40) / 2))]
-    ], dtype=np.int32)
-    cv2.fillPoly(shape_mask, vertices, (255, 255, 255))
-
-    # returning the image only where mask pixels are nonzero
-    masked_image = cv2.bitwise_and(mask, shape_mask)
-    hls[masked_image == 0.] = np.array([0., 0., 0.])
+    img = cv2.resize(img, (160, 80))
+    # images are converted from RBG instead of BGR
+    hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
 
     return (np.array(hls).astype(np.float32) / 255.0) + 0.01
 

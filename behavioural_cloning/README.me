@@ -1,0 +1,74 @@
+3. Data Preprocessing
+
+The training was performed on the provided sample dataset (from udacity). This dataset appeared to have a more smoothly
+varying set of angles which helped the car navigate in the centre of the road more accurately. This is really the
+crux of the problem, to be able to steer in the general direction of the road.
+
+In an ideally optimized model, and given a dataset that completely resembles the entire world (or simulator world),
+our car would always drive in the centre perfectly. However, in reality the optimization of the network is reduced
+to one of error reduction. For this reason, a second dataset was taken by steering the car away to the edges of the
+road, and recording only the recovering angles that the car is expected to learn, to get back on track to the ideally
+centered position between the road tracks.
+
+This allows the optimization problem to be reduced, by essentially breaking the complex steering problem based on
+object detection, to several less complex object detection problems. These new features may already be picked up
+by a simpler convolutional model.
+
+After optimizing the network with the new recovery images, it appeared that the car was still
+driving poorly at a small number of junctions. Adding two recovery tracks as well as more images
+at certain junctions, allowed these problematic junctions to be overcome with the same network
+and loss values, thereby confirming the network parameters are adequately tuned.
+
+Various attempts to feed only the lane line data or restricted data or masked or even thresholded data,
+to the network were performed. However without major investigation of the a new network for this data,
+the predictions would suffer. Furthermore the bridge introduced areas where the features available
+in the dataset have almost nothing in common with the ordinary road, which caused these other simplifications to fail.
+
+ 4. Model Training (Include hyperparameter tuning.)
+
+The training was first performed using the Nvidia self driving car neural network. After some investigation, it appears
+the features available in the simulator have far less complexity than real world objects. For this reason various
+attempts were made to reduce the complexity of the network, to avoid overfitting. Resizing the images revealed
+ improvement to the training rate as well better convergence for the loss, while also drastically reducing the
+complexity of the network. This is essentially a average pooling of the data before it enters the network.
+
+Further more, even though the features of the objects that appear in the simulator are similar to the real world images,
+the complexity of these shapes are smaller and so the convolutional layers do not need to be as deep as the nvidia model.
+ Reducing the depth of the convolutional layers thereby reduced the complexity and improved the accuracy of the model.
+
+Beyond this a Nadam optimizer was used to allow faster exploration of the network hyperparameters without treating
+learning rate as hyper parameter. Instead a higher epoch number was used. The higher epoch number combined with the
+small training dataset, allowed better fitting of the learning rate and for it to approach the best possible value
+without having to explore variation of this hyper parameter individually.
+
+Generally each hyperparameter, for example the batch size or the depth of each convolutional layer, were varied one
+at a time to more practically observe or learn about the networks learning issues. The model was allowed to train
+for 20-50 epochs each time, while closely observing the convergence of the loss.
+
+ 1. Model Architecture Design,
+
+The model optimization problem began with the Nvidia self driving car model, as this is a successfully optimized and
+well tested model. The above points regarding the data and training were then discovered and allowed changing of
+the model hyperparameters to reduce overfitting and explore a simpler architecture.
+
+The higher the depth of each convolutional layer, the higher the dimensionality of the extracted matrix within each
+kernel. This means that the extracted convolution at each layer will be able to carry more complex features with more
+depth. For this reason, and for the sake of reducing the complexity of the architecture, the second and third
+convolutional layers were reduced. This individually helped reduce the loss by several orders of magnitude per epochs
+of training and also reduced overfitting, which could be observed by running the simulator on the trained model.
+
+The last two layers are not as influental in extraction of the features, but to connect them correctly to the fully
+connected layers. Optimizing these came later on and it was observed that it drastically reduced the number of
+parameters of the model. This may be related to the rather small amount of data (or variation there of) we have
+to train with.
+
+A dropout layer was also introduced at each convolutional layer to better allow new random features to be learnt
+and improve the weights over time. This is a necessary step for working with the loss per epoch optimization method.
+
+ 2. Architecture Characteristics,
+
+beyond the improvements, and the original 5 layer nvidia model, the model visualizations can be found
+within the model.png file (attached).
+
+to run model.py, please ensure the images are in the "behavioural_cloning/IMG/" relative path directory, and the
+driving_log.csv in "behavioural_cloning/" relative path directory.

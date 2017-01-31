@@ -37,9 +37,9 @@ def process_image(img):
 
 
 img = cv2.imread('IMG2/center_2017_01_28_19_07_56_423.jpg')
-image_array = process_image(np.asarray(img))
+# image_array = process_image(np.asarray(img))
 
-transformed_image_array = image_array[None, :, :, :]
+# transformed_image_array = image_array[None, :, :, :]
 # This model currently assumes that the features of the model are just the
 with open('model.json', 'r') as jfile:
     # NOTE: if you saved the file by calling json.dump(model.to_json(), ...)
@@ -53,6 +53,8 @@ with open('model.json', 'r') as jfile:
 model.compile(loss='mean_squared_error', optimizer=Nadam())
 weights_file = 'model.h5'
 model.load_weights(weights_file)
-print(model.predict(transformed_image_array))
+from keras.utils.visualize_util import plot
+plot(model, to_file='/home/ardavan/Documents/nd/behavioural_cloning/model.png')
+# print(model.predict(transformed_image_array))
 
 

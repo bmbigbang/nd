@@ -4,8 +4,7 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import pickle
-from scipy.signal import correlate
-
+from scipy.signal import convolve
 
 try:
     with open('calibration.p', 'rb') as f:
@@ -52,6 +51,14 @@ except:
     with open('calibration.p', 'wb') as f:
         pickle.dump((ret, mtx, dist), f)
 
+
+def peaks(inp, index0, index1):
+    inp = (np.conjugate(inp) * inp).real
+    max0 = np.argmax(inp[index0:index1])
+    max1 = np.argsort(inp[index0:index1])[::-1]
+    max1 = max1[(15 < abs(max1 - max0)) & (abs(max1 - max0) < 70)]
+    return np.average((max1[0], max0)).astype(np.int32)
+
 for i in os.listdir('test_images'):
     image = plt.imread('test_images/{}'.format(i))
     img_size = (image.shape[1], image.shape[0])
@@ -60,10 +67,10 @@ for i in os.listdir('test_images'):
 
 
     # vertices = [[  480.   490.], [  800.   490.], [ 1120.   620.], [  160.   620.]]
-    src = np.float32([((img_size[0] - 350) / 2, (img_size[1] + 260) / 2),
-                      ((img_size[0] + 350) / 2, (img_size[1] + 260) / 2),
-                      (img_size[0] - 160, img_size[1] - 110),
-                      (160, img_size[1] - 110)])
+    src = np.float32([((img_size[0] - 270) / 2, (img_size[1] + 260) / 2),
+                      ((img_size[0] + 320) / 2, (img_size[1] + 260) / 2),
+                      (img_size[0] - 220, img_size[1] - 110),
+                      (250, img_size[1] - 110)])
 
     # For destination points, I'm arbitrarily choosing some points to be
     # a nice fit for displaying our warped result
@@ -74,22 +81,22 @@ for i in os.listdir('test_images'):
                       [offset, img_size[1] - offset]])
     # Given src and dst points, calculate the perspective transform matrix
     # print(src, dst, img_size)
-    plt.imshow(undistorted)
-    plt.show()
+    # plt.imshow(undistorted)
+    # plt.show()
     M = cv2.getPerspectiveTransform(src, dst)
     # Warp the image using OpenCV warpPerspective()
 
     warped = cv2.warpPerspective(undistorted, M, img_size)
 
-    plt.imshow(warped)
-    plt.show()
+    # plt.imshow(warped)
+    # plt.show()
 
     R = warped[:, :, 0]
-    R_thresh = (205, 255)
+    R_thresh = (200, 255)
 
     hls = cv2.cvtColor(warped, cv2.COLOR_RGB2HLS)
     S = hls[:, :, 2]
-    S_thresh = (112, 255)
+    S_thresh = (100, 255)
     H = hls[:, :, 0]
     H_thresh = (15, 100)
     mask = np.zeros_like(S)
@@ -114,32 +121,37 @@ for i in os.listdir('test_images'):
     plt.show()
 
     # Take a histogram of the bottom half of the image
-    histogram = np.sum(mask[:, :], axis=0)
+    histogram = np.sum(mask[int(mask.shape[0] / 2):, :], axis=0)
     # Create an output image to draw on and  visualize the result
     out_img = np.dstack((mask, mask, mask)) * 255
     # Find the peak of the left and right halves of the histogram
     # These will be the starting point for the left and right lines
     midpoint = np.int(histogram.shape[0] / 2)
-    ker = np.concatenate((np.exp(-np.abs((np.arange(-22, 22, 1) / 11))), np.exp(-np.abs((np.arange(-22, 22, 1) / 11)))), axis=0)
-    out = correlate(histogram[:midpoint], np.fft.fft(ker), mode='same')
-    leftx_base = int((np.argmax(out) + np.argmin(out)) / 2)
+    ker = np.concatenate((np.exp((-np.abs((np.arange(-25, 25, 1)) / 9))),
+                          np.exp((-np.abs((np.arange(-25, 25, 1)) / 9)))), axis=0)[16:-16]
+    deconvlolution = convolve(histogram[:midpoint], ker, mode='same')
+    out = deconvlolution
+    # plt.plot(histogram[:midpoint])
+    # plt.show()
+    # plt.plot(out)
+    # plt.show()
+    leftx_base = peaks(out, 150, 490) + 150
 
+    deconvlolution = convolve(histogram[midpoint:], ker, mode='same')
+    out = deconvlolution
+    rightx_base = peaks(out, 150, 490) + midpoint + 150
 
-    out = correlate(histogram[midpoint:], np.fft.fft(ker), mode='same')
-    rightx_base = int((np.argmax(out) + np.argmin(out)) / 2) + midpoint
-
-
-    plt.plot(histogram)
-    plt.show()
-    plt.plot(out)
-    plt.show()
+    # plt.plot(histogram[midpoint:])
+    # plt.show()
+    # plt.plot(out)
+    # plt.show()
 
     # Choose the number of sliding windows
-    nwindows = 9
+    nwindows = 7
     # Set height of windows
     window_height = np.int(mask.shape[0] / nwindows)
     # Identify the x and y positions of all nonzero pixels in the image
-    nonzero = mask.nonzero()
+    nonzero = mask
     nonzeroy = np.array(nonzero[0])
     nonzerox = np.array(nonzero[1])
     # Current positions to be updated for each window
@@ -147,48 +159,76 @@ for i in os.listdir('test_images'):
     rightx_current = rightx_base
 
     # Set the width of the windows +/- margin
-    margin = 50
-    # Set minimum number of pixels found to recenter window
-    minpix = 50
+    margin = len(ker) + 10
+
     # Create empty lists to receive left and right lane pixel indices
-    left_lane_inds = []
-    right_lane_inds = []
+    left_lane_inds = ([], [])
+    right_lane_inds = ([], [])
 
     # Step through the windows one by one
     for window in range(nwindows):
         # Identify window boundaries in x and y (and right and left)
         win_y_low = mask.shape[0] - (window + 1) * window_height
         win_y_high = mask.shape[0] - window * window_height
-        win_xleft_low = int(leftx_current - margin)
-        win_xleft_high = int(leftx_current + margin)
-        win_xright_low = int(rightx_current - margin)
-        win_xright_high = int(rightx_current + margin)
+        y = (win_y_high + win_y_low) / 2
+
+        deconvlolution = convolve(np.sum(mask[win_y_low:win_y_high,
+                                         leftx_current - margin:leftx_current + margin],
+                                         axis=0), ker, mode='same')
+        # plt.plot(deconvlolution)
+        # plt.show()
+        left = deconvlolution
+        new_left_candidate = leftx_current + (peaks(left, 0, 2 * margin) - margin)
+        win_xleft_low = new_left_candidate - margin
+        win_xleft_high = new_left_candidate + margin
+
+        deconvlolution = convolve(np.sum(mask[win_y_low:win_y_high,
+                                         rightx_current - margin:rightx_current + margin],
+                                         axis=0), ker, mode='same')
+        right = deconvlolution
+        # plt.plot(deconvlolution)
+        # plt.show()
+        new_right_candidate = rightx_current + (peaks(right, 0, 2 * margin) - margin)
+        win_xright_low = new_right_candidate - margin
+        win_xright_high = new_right_candidate + margin
         # Draw the windows on the visualization image
-        cv2.rectangle(out_img, (win_xleft_low, win_y_low), (win_xleft_high, win_y_high), (0, 255, 0), 2)
-        cv2.rectangle(out_img, (win_xright_low, win_y_low), (win_xright_high, win_y_high), (0, 255, 0), 2)
+
         # Identify the nonzero pixels in x and y within the window
-        good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_xleft_low) & (
-        nonzerox < win_xleft_high)).nonzero()[0]
-        good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_xright_low) & (
-        nonzerox < win_xright_high)).nonzero()[0]
+        # good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_xleft_low) & (
+        # nonzerox < win_xleft_high)).nonzero()[0]
+        # good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_xright_low) & (
+        # nonzerox < win_xright_high)).nonzero()[0]
+
         # Append these indices to the lists
-        left_lane_inds.append(good_left_inds)
-        right_lane_inds.append(good_right_inds)
+
+
         # If you found > minpix pixels, recenter next window on their mean position
-        if len(good_left_inds) > minpix:
-            leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
-        if len(good_right_inds) > minpix:
-            rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
+        if abs(new_left_candidate - leftx_current) < (margin / 3):
+            cv2.rectangle(out_img, (win_xleft_low, win_y_low), (win_xleft_high, win_y_high), (0, 255, 0), 2)
+            leftx_current = new_left_candidate
+            left_lane_inds[0].append(new_left_candidate)
+        else:
+            left_lane_inds[0].append(leftx_current)
+        left_lane_inds[1].append(y)
+
+        if abs(new_right_candidate - rightx_current) < (margin / 3):
+            cv2.rectangle(out_img, (win_xright_low, win_y_low), (win_xright_high, win_y_high), (0, 255, 0), 2)
+            rightx_current = new_right_candidate
+            right_lane_inds[0].append(new_right_candidate)
+        else:
+            right_lane_inds[0].append(rightx_current)
+        right_lane_inds[1].append(y)
+
 
     # Concatenate the arrays of indices
-    left_lane_inds = np.concatenate(left_lane_inds)
-    right_lane_inds = np.concatenate(right_lane_inds)
+    # left_lane_inds = np.concatenate(left_lane_inds)
+    # right_lane_inds = np.concatenate(right_lane_inds)
 
     # Extract left and right line pixel positions
-    leftx = nonzerox[left_lane_inds]
-    lefty = nonzeroy[left_lane_inds]
-    rightx = nonzerox[right_lane_inds]
-    righty = nonzeroy[right_lane_inds]
+    leftx = left_lane_inds[0]
+    lefty = left_lane_inds[1]
+    rightx = right_lane_inds[0]
+    righty = right_lane_inds[1]
 
     # Fit a second order polynomial to each
     left_fit = np.polyfit(lefty, leftx, 2)
@@ -199,8 +239,8 @@ for i in os.listdir('test_images'):
     left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
     right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
 
-    out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
-    out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
+    # out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
+    # out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
     plt.imshow(out_img)
     plt.plot(left_fitx, ploty, color='yellow')
     plt.plot(right_fitx, ploty, color='yellow')

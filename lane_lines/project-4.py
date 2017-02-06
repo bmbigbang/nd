@@ -66,7 +66,7 @@ for i in os.listdir('test_images'):
     undistorted = cv2.undistort(image, mtx, dist, None, mtx)
 
 
-    # vertices = [[  480.   490.], [  800.   490.], [ 1120.   620.], [  160.   620.]]
+    # vertices = [[  505.   490.], [  800.   490.], [ 1060.   610.], [  250.   610.]]
     src = np.float32([((img_size[0] - 270) / 2, (img_size[1] + 260) / 2),
                       ((img_size[0] + 320) / 2, (img_size[1] + 260) / 2),
                       (img_size[0] - 220, img_size[1] - 110),
@@ -80,16 +80,16 @@ for i in os.listdir('test_images'):
                       [img_size[0] - offset, img_size[1] - offset],
                       [offset, img_size[1] - offset]])
     # Given src and dst points, calculate the perspective transform matrix
-    # print(src, dst, img_size)
-    # plt.imshow(undistorted)
-    # plt.show()
+    print(src, dst, img_size)
+    #plt.imshow(undistorted)
+    #plt.show()
     M = cv2.getPerspectiveTransform(src, dst)
     # Warp the image using OpenCV warpPerspective()
 
     warped = cv2.warpPerspective(undistorted, M, img_size)
 
-    # plt.imshow(warped)
-    # plt.show()
+    #plt.imshow(warped)
+    #plt.show()
 
     R = warped[:, :, 0]
     R_thresh = (200, 255)
@@ -100,9 +100,9 @@ for i in os.listdir('test_images'):
     H = hls[:, :, 0]
     H_thresh = (15, 100)
     mask = np.zeros_like(S)
-    mask[((S > S_thresh[0]) & (S <= S_thresh[1])) |
-         ((R > R_thresh[0]) & (R <= R_thresh[1])) |
-         ((H > H_thresh[0]) & (H <= H_thresh[1]))] = 1
+    mask[((S >= S_thresh[0]) & (S <= S_thresh[1])) |
+         ((R >= R_thresh[0]) & (R <= R_thresh[1])) |
+         ((H >= H_thresh[0]) & (H <= H_thresh[1]))] = 1
     combined_color = mask
 
     sobelx = cv2.Sobel(combined_color, cv2.CV_64F, 1, 0, ksize=9)
@@ -114,11 +114,11 @@ for i in os.listdir('test_images'):
     g = np.arctan2(y, x)
     # 5) Create a binary mask where direction thresholds are met
     mask = np.zeros_like(combined_color)
-    sobel_thresh = (0.7, 1.3)
+    sobel_thresh = (0.8, 1.2)
     mask[(g >= sobel_thresh[0]) & (g <= sobel_thresh[1])] = 1
 
-    plt.imshow(mask)
-    plt.show()
+    #plt.imshow(mask)
+    #plt.show()
 
     # Take a histogram of the bottom half of the image
     histogram = np.sum(mask[int(mask.shape[0] / 2):, :], axis=0)
@@ -135,11 +135,11 @@ for i in os.listdir('test_images'):
     # plt.show()
     # plt.plot(out)
     # plt.show()
-    leftx_base = peaks(out, 150, 490) + 150
+    leftx_base = peaks(out, 150, 510) + 150
 
     deconvlolution = convolve(histogram[midpoint:], ker, mode='same')
     out = deconvlolution
-    rightx_base = peaks(out, 150, 490) + midpoint + 150
+    rightx_base = peaks(out, 150, 510) + midpoint + 150
 
     # plt.plot(histogram[midpoint:])
     # plt.show()
@@ -247,7 +247,36 @@ for i in os.listdir('test_images'):
     plt.xlim(0, 1280)
     plt.ylim(720, 0)
 
+    plt.show()
 
+    y_eval = np.max(ploty)
+
+    # Define conversions in x and y from pixels space to meters
+    ym_per_pix = 3 / 173  # meters per pixel in y dimension
+    xm_per_pix = 3.7 / 767  # meters per pixel in x dimension
+
+    # Fit new polynomials to x,y in world space
+    left_fit_cr = np.polyfit(np.float32(lefty)*ym_per_pix, np.float32(leftx)*xm_per_pix, 2)
+    right_fit_cr = np.polyfit(np.float32(righty)*ym_per_pix, np.float32(rightx)*xm_per_pix, 2)
+    # Calculate the new radii of curvature
+    left_curverad = ((1 + (2*left_fit_cr[0]*y_eval*ym_per_pix + left_fit_cr[1])**2)**1.5) / np.absolute(2*left_fit_cr[0])
+    right_curverad = ((1 + (2*right_fit_cr[0]*y_eval*ym_per_pix + right_fit_cr[1])**2)**1.5) / np.absolute(2*right_fit_cr[0])
+    # Now our radius of curvature is in meters
+    print(left_curverad, 'm', right_curverad, 'm')
+    # Example values: 632.1 m    626.2 m
+
+    new = np.zeros_like(warped)
+    points = np.hstack((np.array([np.transpose(np.vstack([left_fitx, ploty]))]),
+                       np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])))
+    cv2.fillPoly(new, points.astype(np.int32), (0, 255, 0))
+
+    M_in = cv2.getPerspectiveTransform(dst, src)
+    unwarp = cv2.warpPerspective(new, M_in, img_size)
+
+    # vertices = [[  505.   490.], [  800.   490.], [ 1060.   610.], [  250.   610.]]
+    fig = plt.figure(frameon=False)
+    plt.imshow(image)
+    plt.imshow(unwarp, alpha=0.5)
     plt.show()
 
 
@@ -275,3 +304,6 @@ class Line():
         self.allx = None
         #y values for detected line pixels
         self.ally = None
+
+
+from moviepy.editor import VideoFileClip

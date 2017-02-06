@@ -59,12 +59,10 @@ def peaks(inp, index0, index1):
     max1 = max1[(15 < abs(max1 - max0)) & (abs(max1 - max0) < 70)]
     return np.average((max1[0], max0)).astype(np.int32)
 
-for i in os.listdir('test_images'):
-    image = plt.imread('test_images/{}'.format(i))
+def process_image(image):
     img_size = (image.shape[1], image.shape[0])
 
     undistorted = cv2.undistort(image, mtx, dist, None, mtx)
-
 
     # vertices = [[  505.   490.], [  800.   490.], [ 1060.   610.], [  250.   610.]]
     src = np.float32([((img_size[0] - 270) / 2, (img_size[1] + 260) / 2),
@@ -81,54 +79,58 @@ for i in os.listdir('test_images'):
                       [offset, img_size[1] - offset]])
     # Given src and dst points, calculate the perspective transform matrix
     print(src, dst, img_size)
-    #plt.imshow(undistorted)
-    #plt.show()
+    # plt.imshow(undistorted)
+    # plt.show()
     M = cv2.getPerspectiveTransform(src, dst)
     # Warp the image using OpenCV warpPerspective()
 
     warped = cv2.warpPerspective(undistorted, M, img_size)
 
-    #plt.imshow(warped)
-    #plt.show()
+    # plt.imshow(warped)
+    # plt.show()
 
     R = warped[:, :, 0]
-    R_thresh = (200, 255)
+    R_thresh = (225, 255)
 
     hls = cv2.cvtColor(warped, cv2.COLOR_RGB2HLS)
     S = hls[:, :, 2]
-    S_thresh = (100, 255)
+    S_thresh = (175, 195)
+    L = hls[:, :, 1]
+    L_thresh = (215, 255)
     H = hls[:, :, 0]
-    H_thresh = (15, 100)
-    mask = np.zeros_like(S)
-    mask[((S >= S_thresh[0]) & (S <= S_thresh[1])) |
-         ((R >= R_thresh[0]) & (R <= R_thresh[1])) |
-         ((H >= H_thresh[0]) & (H <= H_thresh[1]))] = 1
-    combined_color = mask
+    H_thresh = (30, 100)
 
-    sobelx = cv2.Sobel(combined_color, cv2.CV_64F, 1, 0, ksize=9)
-    sobely = cv2.Sobel(combined_color, cv2.CV_64F, 0, 1, ksize=9)
+    mask = np.zeros_like(S)
+
+    gray = cv2.cvtColor(warped, cv2.COLOR_RGB2GRAY)
+    sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=5)
+    sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=5)
     # 3) Take the absolute value of the x and y gradients
     x = np.absolute(sobelx)
     y = np.absolute(sobely)
     # 4) Use np.arctan2(abs_sobely, abs_sobelx) to calculate the direction of the gradient
     g = np.arctan2(y, x)
     # 5) Create a binary mask where direction thresholds are met
-    mask = np.zeros_like(combined_color)
-    sobel_thresh = (0.8, 1.2)
-    mask[(g >= sobel_thresh[0]) & (g <= sobel_thresh[1])] = 1
 
-    #plt.imshow(mask)
-    #plt.show()
+    sobel_thresh = (0.7, 1.3)
+    mask[(((S >= S_thresh[0]) & (S <= S_thresh[1])) |
+         ((R >= R_thresh[0]) & (R <= R_thresh[1])) |
+         ((H >= H_thresh[0]) & (H <= H_thresh[1])) |
+          (L >= L_thresh[0]) & (L <= L_thresh[1])) &
+         (g >= sobel_thresh[0]) & (g <= sobel_thresh[1])] = 1
+
+    plt.imshow(mask)
+    plt.show()
 
     # Take a histogram of the bottom half of the image
-    histogram = np.sum(mask[int(mask.shape[0] / 2):, :], axis=0)
+    histogram = np.sum(mask[int((mask.shape[0] + 200) / 2):, :], axis=0)
     # Create an output image to draw on and  visualize the result
     out_img = np.dstack((mask, mask, mask)) * 255
     # Find the peak of the left and right halves of the histogram
     # These will be the starting point for the left and right lines
     midpoint = np.int(histogram.shape[0] / 2)
-    ker = np.concatenate((np.exp((-np.abs((np.arange(-25, 25, 1)) / 9))),
-                          np.exp((-np.abs((np.arange(-25, 25, 1)) / 9)))), axis=0)[16:-16]
+    ker = np.concatenate((np.exp((-np.abs((np.arange(-15, 15, 1)) / 7))),
+                          np.exp((-np.abs((np.arange(-15, 15, 1)) / 7)))), axis=0)[8:-8]
     deconvlolution = convolve(histogram[:midpoint], ker, mode='same')
     out = deconvlolution
     # plt.plot(histogram[:midpoint])
@@ -147,19 +149,18 @@ for i in os.listdir('test_images'):
     # plt.show()
 
     # Choose the number of sliding windows
-    nwindows = 7
+    nwindows = 9
     # Set height of windows
     window_height = np.int(mask.shape[0] / nwindows)
     # Identify the x and y positions of all nonzero pixels in the image
     nonzero = mask
-    nonzeroy = np.array(nonzero[0])
-    nonzerox = np.array(nonzero[1])
+
     # Current positions to be updated for each window
     leftx_current = leftx_base
     rightx_current = rightx_base
 
     # Set the width of the windows +/- margin
-    margin = len(ker) + 10
+    margin = len(ker) + 30
 
     # Create empty lists to receive left and right lane pixel indices
     left_lane_inds = ([], [])
@@ -219,7 +220,6 @@ for i in os.listdir('test_images'):
             right_lane_inds[0].append(rightx_current)
         right_lane_inds[1].append(y)
 
-
     # Concatenate the arrays of indices
     # left_lane_inds = np.concatenate(left_lane_inds)
     # right_lane_inds = np.concatenate(right_lane_inds)
@@ -235,9 +235,9 @@ for i in os.listdir('test_images'):
     right_fit = np.polyfit(righty, rightx, 2)
 
     # Generate x and y values for plotting
-    ploty = np.linspace(0, mask.shape[0]-1, mask.shape[0] )
-    left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
-    right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
+    ploty = np.linspace(0, mask.shape[0] - 1, mask.shape[0])
+    left_fitx = left_fit[0] * ploty ** 2 + left_fit[1] * ploty + left_fit[2]
+    right_fitx = right_fit[0] * ploty ** 2 + right_fit[1] * ploty + right_fit[2]
 
     # out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
     # out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
@@ -256,29 +256,34 @@ for i in os.listdir('test_images'):
     xm_per_pix = 3.7 / 767  # meters per pixel in x dimension
 
     # Fit new polynomials to x,y in world space
-    left_fit_cr = np.polyfit(np.float32(lefty)*ym_per_pix, np.float32(leftx)*xm_per_pix, 2)
-    right_fit_cr = np.polyfit(np.float32(righty)*ym_per_pix, np.float32(rightx)*xm_per_pix, 2)
+    left_fit_cr = np.polyfit(np.float32(lefty) * ym_per_pix, np.float32(leftx) * xm_per_pix, 2)
+    right_fit_cr = np.polyfit(np.float32(righty) * ym_per_pix, np.float32(rightx) * xm_per_pix, 2)
     # Calculate the new radii of curvature
-    left_curverad = ((1 + (2*left_fit_cr[0]*y_eval*ym_per_pix + left_fit_cr[1])**2)**1.5) / np.absolute(2*left_fit_cr[0])
-    right_curverad = ((1 + (2*right_fit_cr[0]*y_eval*ym_per_pix + right_fit_cr[1])**2)**1.5) / np.absolute(2*right_fit_cr[0])
+    left_grad = (2 * left_fit_cr[0] * y_eval * ym_per_pix + left_fit_cr[1])
+    left_curverad = ((1 + left_grad ** 2) ** 1.5) / np.absolute(2 * left_fit_cr[0])
+    right_grad = (2 * right_fit_cr[0] * y_eval * ym_per_pix + right_fit_cr[1])
+    right_curverad = ((1 + right_grad ** 2) ** 1.5) / np.absolute(2 * right_fit_cr[0])
     # Now our radius of curvature is in meters
-    print(left_curverad, 'm', right_curverad, 'm')
+    print(np.sign(left_fit_cr[0]) * left_curverad, 'm', np.sign(right_fit_cr[0]) * right_curverad, 'm')
     # Example values: 632.1 m    626.2 m
 
     new = np.zeros_like(warped)
     points = np.hstack((np.array([np.transpose(np.vstack([left_fitx, ploty]))]),
-                       np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])))
+                        np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])))
     cv2.fillPoly(new, points.astype(np.int32), (0, 255, 0))
 
-    M_in = cv2.getPerspectiveTransform(dst, src)
-    unwarp = cv2.warpPerspective(new, M_in, img_size)
+    M_inv = cv2.getPerspectiveTransform(dst, src)
+    unwarp = cv2.warpPerspective(new, M_inv, img_size)
 
     # vertices = [[  505.   490.], [  800.   490.], [ 1060.   610.], [  250.   610.]]
-    fig = plt.figure(frameon=False)
-    plt.imshow(image)
-    plt.imshow(unwarp, alpha=0.5)
+    overlay = cv2.addWeighted(image, 1, unwarp, 0.4, 0)
+    plt.imshow(overlay)
     plt.show()
+    return
 
+for i in os.listdir('test_images'):
+    img = plt.imread('test_images/{}'.format(i))
+    process_image(img)
 
 
 # Define a class to receive the characteristics of each line detection

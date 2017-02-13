@@ -84,19 +84,6 @@ def process_image(image):
 
     undistorted = cv2.undistort(image, mtx, dist, None, mtx)
 
-    # define corners of the lane lines to be warped to birds-eye view
-    # vertices = [[515.  475.], [765.  475.], [1280.  720.], [0.  720.]]
-    src = np.float32([((img_size[0] - 250) / 2, (img_size[1] + 230) / 2),
-                      ((img_size[0] + 250) / 2, (img_size[1] + 230) / 2),
-                      (img_size[0], img_size[1]),
-                      (0, img_size[1])])
-
-    # draw lines showing the borders of the src points; only done to diagnose
-    # cv2.line(undistorted, tuple(src[0]), tuple(src[1]), (255, 0, 0), thickness=3)
-    # cv2.line(undistorted, tuple(src[1]), tuple(src[2]), (255, 0, 0), thickness=3)
-    # cv2.line(undistorted, tuple(src[2]), tuple(src[3]), (255, 0, 0), thickness=3)
-    # cv2.line(undistorted, tuple(src[3]), tuple(src[0]), (255, 0, 0), thickness=3)
-
     # create a red colour threshold mask
     R = undistorted[:, :, 0]
     R_thresh = (225, 255)
@@ -137,6 +124,19 @@ def process_image(image):
     # plt.imshow(mask)
     # plt.show()
 
+    # define corners of the lane lines to be warped to birds-eye view
+    # vertices = [[515.  475.], [765.  475.], [1280.  720.], [0.  720.]]
+    src = np.float32([((img_size[0] - 250) / 2, (img_size[1] + 230) / 2),
+                      ((img_size[0] + 250) / 2, (img_size[1] + 230) / 2),
+                      (img_size[0], img_size[1]),
+                      (0, img_size[1])])
+
+    # draw lines showing the borders of the src points; only done to diagnose
+    # cv2.line(undistorted, tuple(src[0]), tuple(src[1]), (255, 0, 0), thickness=3)
+    # cv2.line(undistorted, tuple(src[1]), tuple(src[2]), (255, 0, 0), thickness=3)
+    # cv2.line(undistorted, tuple(src[2]), tuple(src[3]), (255, 0, 0), thickness=3)
+    # cv2.line(undistorted, tuple(src[3]), tuple(src[0]), (255, 0, 0), thickness=3)
+
     # no offset on the edges of the image and dst is basically the four corners of the image
     offset = 0
     dst = np.float32([[offset, offset], [img_size[0] - offset, offset],
@@ -144,7 +144,8 @@ def process_image(image):
                       [offset, img_size[1] - offset]])
     # Given src and dst points, calculate the perspective transform matrix
     # print(src, dst, img_size)
-    # plt.imshow(undistorted)
+    # visualise before warping
+    # plt.imshow(mask)
     # plt.show()
 
     # construct transformation matrix
@@ -200,12 +201,12 @@ def process_image(image):
 
     # stored base positions to be updated for each side if the changes
     # are smaller than 50 pixels from the last image
-    if line.base_leftx and abs(line.base_leftx - leftx_current) < 50:
+    if line.base_leftx and abs(line.base_leftx - leftx_current) < 70:
         leftx_current = line.base_leftx
     else:
         line.base_leftx = leftx_current
 
-    if line.base_rightx and abs(line.base_rightx - rightx_current) < 50:
+    if line.base_rightx and abs(line.base_rightx - rightx_current) < 70:
         rightx_current = line.base_rightx
     else:
         line.base_rightx = rightx_current
@@ -377,7 +378,7 @@ def process_image(image):
     unwarp = cv2.warpPerspective(new, M_inv, img_size)
 
     # draw the overlay with alpha = 1, beta = 0.4 and gamma=0
-    overlay = cv2.addWeighted(image, 1, unwarp, 0.4, 0)
+    overlay = cv2.addWeighted(undistorted, 1, unwarp, 0.4, 0)
 
     # calculate the distance of the image centre from the middle of the lines
     # negative values represent distances to the left of centre
@@ -385,19 +386,19 @@ def process_image(image):
 
     # if the curvature values found are too high, usually means correct lines were not found
     # do not use curvature values that are too low or too high
-    if 100 < abs(left_curverad) < 700 and 100 < abs(right_curverad) < 700:
-        curve = (left_curverad + right_curverad) / 2
-    elif 100 < abs(left_curverad) < 700 and 100 < abs(right_curverad) > 700:
+    if 100 < abs(left_curverad) and 100 < abs(right_curverad):
+        curve = ((len(left_lane_inds) * left_curverad) + (len(right_lane_inds) * right_curverad)) / (len(right_lane_inds) + (len(left_lane_inds)))
+    elif 100 < abs(left_curverad) and 100 > abs(right_curverad):
         curve = left_curverad
-    elif 100 < abs(left_curverad) > 700 and 100 < abs(right_curverad) < 700:
+    elif 100 > abs(left_curverad) and 100 < abs(right_curverad):
         curve = right_curverad
     else:
-        curve = 700.0
+        curve = 100.0
 
     # create text on the image with the curvature and position from the centre
     font = cv2.FONT_HERSHEY_SIMPLEX
     cv2.putText(overlay, 'Curvature {:.1f}m   Position {:.2f}m'.format(curve, car_centre),
-                (200, 100), font, 1, (255, 255, 255), 2)
+                (150, 100), font, 1, (255, 255, 255), 2)
     # visualize if necessary
     # plt.imshow(overlay)
     # plt.show()

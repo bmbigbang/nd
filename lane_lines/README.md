@@ -97,6 +97,19 @@ an example of an output image is shown below:
 All output images are stored in the out_images folder for both calibration and other 
 diagnostic images and final outputs.
 
+Pipeline Video
+---
+
+The link to all videos can be found below:
+
+[link to my video result](processed_project_video.mp4)
+
+[link to challenge video result](processed_challenge_project_video.mp4)
+
+[link to harder challenge video result](processed_harder_challenge_project_video.mp4)
+
+Discussion
+---
 The parameters of the kernel convolution, margin and selection criteria and colour thresholds were optimized for the test 
 images and as such do not perform as well on new data that has different scaling and colours as well as much higher gradients.
 There are several approaches I would like to pursue in challenging each. For instance a different kernel can be used based on

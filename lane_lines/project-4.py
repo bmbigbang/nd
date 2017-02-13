@@ -7,6 +7,7 @@ import pickle
 from scipy.signal import convolve
 
 try:
+    # if a calibration pickle was found, read out the parameters. otherwise calibrate images
     with open('calibration.p', 'rb') as f:
         ret, mtx, dist = pickle.load(f)
 except:
@@ -16,7 +17,7 @@ except:
     # Arrays to store object points and image points from all the images.
     objpoints = []  # 3d points in real world space
     imgpoints = []  # 2d points in image plane.
-    # camera calibration
+    # camera calibration for failes in the camera_cal relative folder path
     for i in os.listdir('camera_cal'):
 
         image = plt.imread('camera_cal/{}'.format(i))
@@ -28,7 +29,7 @@ except:
         ret, corners = cv2.findChessboardCorners(gray, (9, 6))
 
         if not ret:
-            print('didnt find corners {}'.format(i))
+            print('didnt find corners for {}'.format(i))
             continue
 
         # If found, add object points, image points
@@ -37,127 +38,177 @@ except:
 
         # Draw and display the corners
         cv2.drawChessboardCorners(image, (9, 6), corners, ret)
-        # write_name = 'corners_found'+str(idx)+'.jpg'
-        # cv2.imwrite(write_name, img)
-        print(i)
-        plt.imshow(image)
-        plt.show()
 
+        # calibrate using object and image points collected
         ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
 
+        # undistort and save images to output_images
         dst = cv2.undistort(image, mtx, dist, None, mtx)
         cv2.imwrite('output_images/{}'.format(i), dst)
 
+    # pickle parameters for futute runs
     with open('calibration.p', 'wb') as f:
         pickle.dump((ret, mtx, dist), f)
 
 
+# Define a class to receive the characteristics of each line detection
+class Line:
+    def __init__(self, n=6):
+        # number of images to average over
+        self.n = n
+        # hold the fitted polynomial coefficients [A, B, C] for the last n entries
+        self.left_params = []
+        self.right_params = []
+
+        # store radius of curvature calculated for the left and right fits for the last n entries
+        self.curv_left = []
+        self.curv_right = []
+
+        # previous base position for left and right lines
+        self.base_leftx = 0
+        self.base_rightx = 0
+
+
 def peaks(inp, index0, index1):
+    # return the average of the first two peaks found in the convolution
+    # within index0 and index1. if not found, return the average of the two indexes
     inp = (np.conjugate(inp) * inp).real
-    max0 = np.argmax(inp[index0:index1])
     max1 = np.argsort(inp[index0:index1])[::-1]
-    max1 = max1[(15 < abs(max1 - max0)) & (abs(max1 - max0) < 70)]
-    return np.average((max1[0], max0)).astype(np.int32)
+    max0 = max1[0] if len(max1) else int((index0 + index1) / 2)
+    max1 = max1[(15 < abs(max1 - int(max0))) & (abs(max1 - int(max0)) < 50)]
+    return np.average((max1[0] if len(max1) else int((index0 + index1) / 2), max0)).astype(np.int32)
+
 
 def process_image(image):
     img_size = (image.shape[1], image.shape[0])
 
     undistorted = cv2.undistort(image, mtx, dist, None, mtx)
 
-    # vertices = [[  505.   490.], [  800.   490.], [ 1060.   610.], [  250.   610.]]
-    src = np.float32([((img_size[0] - 270) / 2, (img_size[1] + 260) / 2),
-                      ((img_size[0] + 320) / 2, (img_size[1] + 260) / 2),
-                      (img_size[0] - 220, img_size[1] - 110),
-                      (250, img_size[1] - 110)])
+    # define corners of the lane lines to be warped to birds-eye view
+    # vertices = [[515.  475.], [765.  475.], [1280.  720.], [0.  720.]]
+    src = np.float32([((img_size[0] - 250) / 2, (img_size[1] + 230) / 2),
+                      ((img_size[0] + 250) / 2, (img_size[1] + 230) / 2),
+                      (img_size[0], img_size[1]),
+                      (0, img_size[1])])
 
-    # For destination points, I'm arbitrarily choosing some points to be
-    # a nice fit for displaying our warped result
-    # again, not exact, but close enough for our purposes
-    offset = 100
+    # draw lines showing the borders of the src points; only done to diagnose
+    # cv2.line(undistorted, tuple(src[0]), tuple(src[1]), (255, 0, 0), thickness=3)
+    # cv2.line(undistorted, tuple(src[1]), tuple(src[2]), (255, 0, 0), thickness=3)
+    # cv2.line(undistorted, tuple(src[2]), tuple(src[3]), (255, 0, 0), thickness=3)
+    # cv2.line(undistorted, tuple(src[3]), tuple(src[0]), (255, 0, 0), thickness=3)
+
+    # no offset on the edges of the image and dst is basically the four corners of the image
+    offset = 0
     dst = np.float32([[offset, offset], [img_size[0] - offset, offset],
                       [img_size[0] - offset, img_size[1] - offset],
                       [offset, img_size[1] - offset]])
     # Given src and dst points, calculate the perspective transform matrix
-    print(src, dst, img_size)
+    # print(src, dst, img_size)
     # plt.imshow(undistorted)
     # plt.show()
+
+    # construct transformation matrix
     M = cv2.getPerspectiveTransform(src, dst)
     # Warp the image using OpenCV warpPerspective()
-
     warped = cv2.warpPerspective(undistorted, M, img_size)
 
+    # visualise warped image here if necessary
     # plt.imshow(warped)
     # plt.show()
 
+    # create a red colour threshold mask
     R = warped[:, :, 0]
     R_thresh = (225, 255)
 
     hls = cv2.cvtColor(warped, cv2.COLOR_RGB2HLS)
+    # create a saturation threshold mask
     S = hls[:, :, 2]
     S_thresh = (175, 195)
+    # create a lightness threshold mask
     L = hls[:, :, 1]
     L_thresh = (215, 255)
+    # create a hue thresholded mask
     H = hls[:, :, 0]
-    H_thresh = (30, 100)
+    H_thresh = (35, 75)
 
+    # find the sobel x and y gradients to create a threshold direction mask
     mask = np.zeros_like(S)
-
     gray = cv2.cvtColor(warped, cv2.COLOR_RGB2GRAY)
     sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=5)
     sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=5)
-    # 3) Take the absolute value of the x and y gradients
+    # Take the absolute value of the x and y gradients
     x = np.absolute(sobelx)
     y = np.absolute(sobely)
-    # 4) Use np.arctan2(abs_sobely, abs_sobelx) to calculate the direction of the gradient
+    # Use np.arctan2(abs_sobely, abs_sobelx) to calculate the direction of the gradient
     g = np.arctan2(y, x)
-    # 5) Create a binary mask where direction thresholds are met
-
+    # Create a binary mask where direction thresholds are met
     sobel_thresh = (0.7, 1.3)
+
+    # combine all the masks such that any of the colour space masks are complied with
+    # and the direction of gradient mask condition is also true
     mask[(((S >= S_thresh[0]) & (S <= S_thresh[1])) |
          ((R >= R_thresh[0]) & (R <= R_thresh[1])) |
          ((H >= H_thresh[0]) & (H <= H_thresh[1])) |
           (L >= L_thresh[0]) & (L <= L_thresh[1])) &
          (g >= sobel_thresh[0]) & (g <= sobel_thresh[1])] = 1
 
-    plt.imshow(mask)
-    plt.show()
+    # visualise the colour binary mask here if necessary
+    # plt.imshow(mask)
+    # plt.show()
+
+    # create a mirrored lorentzian kernel to filter out the lane lines out of the image pixels
+    ker = np.concatenate((np.exp((-np.abs((np.arange(-13, 13, 1)) / 7))),
+                          np.exp((-np.abs((np.arange(-13, 13, 1)) / 7)))), axis=0)[6:-6]
 
     # Take a histogram of the bottom half of the image
-    histogram = np.sum(mask[int((mask.shape[0] + 200) / 2):, :], axis=0)
-    # Create an output image to draw on and  visualize the result
-    out_img = np.dstack((mask, mask, mask)) * 255
+    histogram = np.sum(mask[int((mask.shape[0] + 400) / 2):, :], axis=0)
+
+    # Create an output image to draw on and  visualize the result, if necessary
+    # out_img = np.dstack((mask, mask, mask)) * 255
+
     # Find the peak of the left and right halves of the histogram
     # These will be the starting point for the left and right lines
     midpoint = np.int(histogram.shape[0] / 2)
-    ker = np.concatenate((np.exp((-np.abs((np.arange(-15, 15, 1)) / 7))),
-                          np.exp((-np.abs((np.arange(-15, 15, 1)) / 7)))), axis=0)[8:-8]
+
+    # perform a integral based on the kernel to find points where the kernel
+    # is best observed within the histogram
     deconvlolution = convolve(histogram[:midpoint], ker, mode='same')
-    out = deconvlolution
+    out1 = deconvlolution
+
+    # visualise the histogram and deconvolution here if necessary
     # plt.plot(histogram[:midpoint])
     # plt.show()
-    # plt.plot(out)
+    # plt.plot(out1)
     # plt.show()
-    leftx_base = peaks(out, 150, 510) + 150
+    leftx_current = peaks(out1, 20, 620) + 20
 
+    # same as above for the right side
     deconvlolution = convolve(histogram[midpoint:], ker, mode='same')
     out = deconvlolution
-    rightx_base = peaks(out, 150, 510) + midpoint + 150
 
+    # visualise the histogram and deconvolution here if necessary
     # plt.plot(histogram[midpoint:])
     # plt.show()
     # plt.plot(out)
     # plt.show()
+    rightx_current = peaks(out, 20, 620) + midpoint + 20
 
     # Choose the number of sliding windows
     nwindows = 9
     # Set height of windows
     window_height = np.int(mask.shape[0] / nwindows)
-    # Identify the x and y positions of all nonzero pixels in the image
-    nonzero = mask
 
-    # Current positions to be updated for each window
-    leftx_current = leftx_base
-    rightx_current = rightx_base
+    # stored base positions to be updated for each side if the changes
+    # are smaller than 50 pixels from the last image
+    if line.base_leftx and abs(line.base_leftx - leftx_current) < 50:
+        leftx_current = line.base_leftx
+    else:
+        line.base_leftx = leftx_current
+
+    if line.base_rightx and abs(line.base_rightx - rightx_current) < 50:
+        rightx_current = line.base_rightx
+    else:
+        line.base_rightx = rightx_current
 
     # Set the width of the windows +/- margin
     margin = len(ker) + 30
@@ -173,56 +224,57 @@ def process_image(image):
         win_y_high = mask.shape[0] - window * window_height
         y = (win_y_high + win_y_low) / 2
 
+        # perform a integral based on the kernel to find points where the kernel
+        # is best observed within the window
         deconvlolution = convolve(np.sum(mask[win_y_low:win_y_high,
                                          leftx_current - margin:leftx_current + margin],
                                          axis=0), ker, mode='same')
+        # visualise here if necessary
         # plt.plot(deconvlolution)
         # plt.show()
         left = deconvlolution
+        # find and store new candidate
         new_left_candidate = leftx_current + (peaks(left, 0, 2 * margin) - margin)
-        win_xleft_low = new_left_candidate - margin
-        win_xleft_high = new_left_candidate + margin
 
+        # window coordinates if they are being drawn
+        # win_xleft_low = new_left_candidate - margin
+        # win_xleft_high = new_left_candidate + margin
+
+        # perform a integral based on the kernel to find points where the kernel
+        # is best observed within the window
         deconvlolution = convolve(np.sum(mask[win_y_low:win_y_high,
                                          rightx_current - margin:rightx_current + margin],
                                          axis=0), ker, mode='same')
-        right = deconvlolution
         # plt.plot(deconvlolution)
         # plt.show()
+        right = deconvlolution
+        # find and store new candidate
         new_right_candidate = rightx_current + (peaks(right, 0, 2 * margin) - margin)
-        win_xright_low = new_right_candidate - margin
-        win_xright_high = new_right_candidate + margin
-        # Draw the windows on the visualization image
 
-        # Identify the nonzero pixels in x and y within the window
-        # good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_xleft_low) & (
-        # nonzerox < win_xleft_high)).nonzero()[0]
-        # good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_xright_low) & (
-        # nonzerox < win_xright_high)).nonzero()[0]
+        # window coordinates if they are being drawn
+        # win_xright_low = new_right_candidate - margin
+        # win_xright_high = new_right_candidate + margin
 
-        # Append these indices to the lists
-
-
-        # If you found > minpix pixels, recenter next window on their mean position
-        if abs(new_left_candidate - leftx_current) < (margin / 3):
-            cv2.rectangle(out_img, (win_xleft_low, win_y_low), (win_xleft_high, win_y_high), (0, 255, 0), 2)
+        # if we found new candidates that arent outside the margin
+        # recenter next window on their mean position and draw the windows
+        # otherwise use the previous window coordinates as the current
+        if abs(new_left_candidate - leftx_current) < (margin / 1.6):
+            # Draw the windows on the visualization image
+            # cv2.rectangle(out_img, (win_xleft_low, win_y_low), (win_xleft_high, win_y_high), (0, 255, 0), 2)
             leftx_current = new_left_candidate
             left_lane_inds[0].append(new_left_candidate)
         else:
             left_lane_inds[0].append(leftx_current)
         left_lane_inds[1].append(y)
 
-        if abs(new_right_candidate - rightx_current) < (margin / 3):
-            cv2.rectangle(out_img, (win_xright_low, win_y_low), (win_xright_high, win_y_high), (0, 255, 0), 2)
+        if abs(new_right_candidate - rightx_current) < (margin / 1.6):
+            # Draw the windows on the visualization image
+            # cv2.rectangle(out_img, (win_xright_low, win_y_low), (win_xright_high, win_y_high), (0, 255, 0), 2)
             rightx_current = new_right_candidate
             right_lane_inds[0].append(new_right_candidate)
         else:
             right_lane_inds[0].append(rightx_current)
         right_lane_inds[1].append(y)
-
-    # Concatenate the arrays of indices
-    # left_lane_inds = np.concatenate(left_lane_inds)
-    # right_lane_inds = np.concatenate(right_lane_inds)
 
     # Extract left and right line pixel positions
     leftx = left_lane_inds[0]
@@ -236,19 +288,6 @@ def process_image(image):
 
     # Generate x and y values for plotting
     ploty = np.linspace(0, mask.shape[0] - 1, mask.shape[0])
-    left_fitx = left_fit[0] * ploty ** 2 + left_fit[1] * ploty + left_fit[2]
-    right_fitx = right_fit[0] * ploty ** 2 + right_fit[1] * ploty + right_fit[2]
-
-    # out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
-    # out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
-    plt.imshow(out_img)
-    plt.plot(left_fitx, ploty, color='yellow')
-    plt.plot(right_fitx, ploty, color='yellow')
-    plt.xlim(0, 1280)
-    plt.ylim(720, 0)
-
-    plt.show()
-
     y_eval = np.max(ploty)
 
     # Define conversions in x and y from pixels space to meters
@@ -264,51 +303,129 @@ def process_image(image):
     right_grad = (2 * right_fit_cr[0] * y_eval * ym_per_pix + right_fit_cr[1])
     right_curverad = ((1 + right_grad ** 2) ** 1.5) / np.absolute(2 * right_fit_cr[0])
     # Now our radius of curvature is in meters
-    print(np.sign(left_fit_cr[0]) * left_curverad, 'm', np.sign(right_fit_cr[0]) * right_curverad, 'm')
-    # Example values: 632.1 m    626.2 m
 
+    # if left plot parameters are not found, use current
+    if not len(line.left_params):
+        line.left_params = [left_fit, left_fit]
+
+    # if left curvature is not found, use current
+    if not len(line.curv_left):
+        line.curv_left = [left_curverad, left_curverad]
+
+    # if there is some curvature data stored, check the new curvature is not too far off
+    elif abs(left_curverad - np.average(line.curv_left)) < 600:
+        # if we have store above line.n times for curvature and fit parameters
+        # pop the first in the stack
+        if len(line.curv_left) > line.n:
+            line.curv_left.pop(0)
+        if len(line.left_params) > line.n:
+            line.left_params.pop(0)
+        # store the new values
+        line.left_params.append(left_fit)
+        line.curv_left.append(left_curverad)
+    # calculate the average of the stored curvature and fit parameter values
+    left_curverad = np.average(line.curv_left)
+    left_fit = np.average(line.left_params, axis=0)
+    # use the average fit parameters to plot line for the overlay
+    left_fitx = left_fit[0] * ploty ** 2 + left_fit[1] * ploty + left_fit[2]
+
+    # if left plot parameters are not found, use current
+    if not len(line.right_params):
+        line.right_params = [right_fit, right_fit]
+
+    # if left curvature is not found, use current
+    if not len(line.curv_right):
+        line.curv_right = [right_curverad, right_curverad]
+
+    # if there is some curvature data stored, check the new curvature is not too far off
+    elif abs(right_curverad - np.average(line.curv_right)) < 600:
+        # if we have store above line.n times for curvature and fit parameters
+        # pop the first in the stack
+        if len(line.curv_right) > line.n:
+            line.curv_right.pop(0)
+        if len(line.right_params) > line.n:
+            line.right_params.pop(0)
+        # store the new values
+        line.curv_right.append(right_curverad)
+        line.right_params.append(right_fit)
+    # calculate the average of the stored curvature and fit parameter values
+    right_curverad = np.average(line.curv_right)
+    right_fit = np.average(line.right_params, axis=0)
+    # use the average fit parameters to plot line for the overlay
+    right_fitx = right_fit[0] * ploty ** 2 + right_fit[1] * ploty + right_fit[2]
+
+    # visualise the plotted windows and poly fit here if necessary
+    # out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
+    # out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
+    # plt.imshow(out_img)
+    # plt.plot(left_fitx, ploty, color='yellow')
+    # plt.plot(right_fitx, ploty, color='yellow')
+    # plt.xlim(0, 1280)
+    # plt.ylim(720, 0)
+    #
+    # print(left_curverad, 'm', right_curverad, 'm')
+    # Example values: 632.1 m    626.2 m
+    # plt.show()
+
+    # create new image and draw the new fitted lines
     new = np.zeros_like(warped)
     points = np.hstack((np.array([np.transpose(np.vstack([left_fitx, ploty]))]),
                         np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])))
     cv2.fillPoly(new, points.astype(np.int32), (0, 255, 0))
 
+    # contruct the inverse transform matrix for warping
     M_inv = cv2.getPerspectiveTransform(dst, src)
+    # warp the image
     unwarp = cv2.warpPerspective(new, M_inv, img_size)
 
-    # vertices = [[  505.   490.], [  800.   490.], [ 1060.   610.], [  250.   610.]]
+    # draw the overlay with alpha = 1, beta = 0.4 and gamma=0
     overlay = cv2.addWeighted(image, 1, unwarp, 0.4, 0)
-    plt.imshow(overlay)
-    plt.show()
-    return
+
+    # calculate the distance of the image centre from the middle of the lines
+    # negative values represent distances to the left of centre
+    car_centre = (((img_size[0])/ 2) - ((left_fitx[0] + right_fitx[0]) / 2)) * xm_per_pix
+
+    # if the curvature values found are too high, usually means correct lines were not found
+    # do not use curvature values that are too low or too high
+    if 100 < abs(left_curverad) < 700 and 100 < abs(right_curverad) < 700:
+        curve = (left_curverad + right_curverad) / 2
+    elif 100 < abs(left_curverad) < 700 and 100 < abs(right_curverad) > 700:
+        curve = left_curverad
+    elif 100 < abs(left_curverad) > 700 and 100 < abs(right_curverad) < 700:
+        curve = right_curverad
+    else:
+        curve = 700.0
+
+    # create text on the image with the curvature and position from the centre
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(overlay, 'Curvature {:.1f}m   Position {:.2f}m'.format(curve, car_centre),
+                (200, 100), font, 1, (255, 255, 255), 2)
+    # visualize if necessary
+    # plt.imshow(overlay)
+    # plt.show()
+    return overlay
+
 
 for i in os.listdir('test_images'):
     img = plt.imread('test_images/{}'.format(i))
-    process_image(img)
+    line = Line()
 
-
-# Define a class to receive the characteristics of each line detection
-class Line():
-    def __init__(self):
-        # was the line detected in the last iteration?
-        self.detected = False
-        # x values of the last n fits of the line
-        self.recent_xfitted = []
-        #average x values of the fitted line over the last n iterations
-        self.bestx = None
-        #polynomial coefficients averaged over the last n iterations
-        self.best_fit = None
-        #polynomial coefficients for the most recent fit
-        self.current_fit = [np.array([False])]
-        #radius of curvature of the line in some units
-        self.radius_of_curvature = None
-        #distance in meters of vehicle center from the line
-        self.line_base_pos = None
-        #difference in fit coefficients between last and new fits
-        self.diffs = np.array([0,0,0], dtype='float')
-        #x values for detected line pixels
-        self.allx = None
-        #y values for detected line pixels
-        self.ally = None
+    cv2.imwrite('output_images/{}'.format(i), process_image(img))
 
 
 from moviepy.editor import VideoFileClip
+line = Line()
+output = 'processed_project_video.mp4'
+clip2 = VideoFileClip('project_video.mp4')
+clip = clip2.fl_image(process_image)
+clip.write_videofile(output, audio=False)
+line = Line()
+output = 'processed_challenge_video.mp4'
+clip2 = VideoFileClip('challenge_video.mp4')
+clip = clip2.fl_image(process_image)
+clip.write_videofile(output, audio=False)
+line = Line()
+output = 'processed_harder_challenge_video.mp4'
+clip2 = VideoFileClip('harder_challenge_video.mp4')
+clip = clip2.fl_image(process_image)
+clip.write_videofile(output, audio=False)

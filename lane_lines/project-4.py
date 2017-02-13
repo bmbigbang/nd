@@ -97,30 +97,11 @@ def process_image(image):
     # cv2.line(undistorted, tuple(src[2]), tuple(src[3]), (255, 0, 0), thickness=3)
     # cv2.line(undistorted, tuple(src[3]), tuple(src[0]), (255, 0, 0), thickness=3)
 
-    # no offset on the edges of the image and dst is basically the four corners of the image
-    offset = 0
-    dst = np.float32([[offset, offset], [img_size[0] - offset, offset],
-                      [img_size[0] - offset, img_size[1] - offset],
-                      [offset, img_size[1] - offset]])
-    # Given src and dst points, calculate the perspective transform matrix
-    # print(src, dst, img_size)
-    # plt.imshow(undistorted)
-    # plt.show()
-
-    # construct transformation matrix
-    M = cv2.getPerspectiveTransform(src, dst)
-    # Warp the image using OpenCV warpPerspective()
-    warped = cv2.warpPerspective(undistorted, M, img_size)
-
-    # visualise warped image here if necessary
-    # plt.imshow(warped)
-    # plt.show()
-
     # create a red colour threshold mask
-    R = warped[:, :, 0]
+    R = undistorted[:, :, 0]
     R_thresh = (225, 255)
 
-    hls = cv2.cvtColor(warped, cv2.COLOR_RGB2HLS)
+    hls = cv2.cvtColor(undistorted, cv2.COLOR_RGB2HLS)
     # create a saturation threshold mask
     S = hls[:, :, 2]
     S_thresh = (175, 195)
@@ -133,7 +114,7 @@ def process_image(image):
 
     # find the sobel x and y gradients to create a threshold direction mask
     mask = np.zeros_like(S)
-    gray = cv2.cvtColor(warped, cv2.COLOR_RGB2GRAY)
+    gray = cv2.cvtColor(undistorted, cv2.COLOR_RGB2GRAY)
     sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=5)
     sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=5)
     # Take the absolute value of the x and y gradients
@@ -156,15 +137,34 @@ def process_image(image):
     # plt.imshow(mask)
     # plt.show()
 
+    # no offset on the edges of the image and dst is basically the four corners of the image
+    offset = 0
+    dst = np.float32([[offset, offset], [img_size[0] - offset, offset],
+                      [img_size[0] - offset, img_size[1] - offset],
+                      [offset, img_size[1] - offset]])
+    # Given src and dst points, calculate the perspective transform matrix
+    # print(src, dst, img_size)
+    # plt.imshow(undistorted)
+    # plt.show()
+
+    # construct transformation matrix
+    M = cv2.getPerspectiveTransform(src, dst)
+    # Warp the image using OpenCV warpPerspective()
+    warped = cv2.warpPerspective(mask, M, img_size)
+
+    # visualise warped image here if necessary
+    # plt.imshow(warped)
+    # plt.show()
+
     # create a mirrored lorentzian kernel to filter out the lane lines out of the image pixels
     ker = np.concatenate((np.exp((-np.abs((np.arange(-13, 13, 1)) / 7))),
                           np.exp((-np.abs((np.arange(-13, 13, 1)) / 7)))), axis=0)[6:-6]
 
     # Take a histogram of the bottom half of the image
-    histogram = np.sum(mask[int((mask.shape[0] + 400) / 2):, :], axis=0)
+    histogram = np.sum(warped[int((warped.shape[0] + 400) / 2):, :], axis=0)
 
     # Create an output image to draw on and  visualize the result, if necessary
-    # out_img = np.dstack((mask, mask, mask)) * 255
+    # out_img = np.dstack((warped, warped, warped)) * 255
 
     # Find the peak of the left and right halves of the histogram
     # These will be the starting point for the left and right lines
@@ -196,7 +196,7 @@ def process_image(image):
     # Choose the number of sliding windows
     nwindows = 9
     # Set height of windows
-    window_height = np.int(mask.shape[0] / nwindows)
+    window_height = np.int(warped.shape[0] / nwindows)
 
     # stored base positions to be updated for each side if the changes
     # are smaller than 50 pixels from the last image
@@ -220,13 +220,13 @@ def process_image(image):
     # Step through the windows one by one
     for window in range(nwindows):
         # Identify window boundaries in x and y (and right and left)
-        win_y_low = mask.shape[0] - (window + 1) * window_height
-        win_y_high = mask.shape[0] - window * window_height
+        win_y_low = warped.shape[0] - (window + 1) * window_height
+        win_y_high = warped.shape[0] - window * window_height
         y = (win_y_high + win_y_low) / 2
 
         # perform a integral based on the kernel to find points where the kernel
         # is best observed within the window
-        deconvlolution = convolve(np.sum(mask[win_y_low:win_y_high,
+        deconvlolution = convolve(np.sum(warped[win_y_low:win_y_high,
                                          leftx_current - margin:leftx_current + margin],
                                          axis=0), ker, mode='same')
         # visualise here if necessary
@@ -242,7 +242,7 @@ def process_image(image):
 
         # perform a integral based on the kernel to find points where the kernel
         # is best observed within the window
-        deconvlolution = convolve(np.sum(mask[win_y_low:win_y_high,
+        deconvlolution = convolve(np.sum(warped[win_y_low:win_y_high,
                                          rightx_current - margin:rightx_current + margin],
                                          axis=0), ker, mode='same')
         # plt.plot(deconvlolution)
@@ -287,7 +287,7 @@ def process_image(image):
     right_fit = np.polyfit(righty, rightx, 2)
 
     # Generate x and y values for plotting
-    ploty = np.linspace(0, mask.shape[0] - 1, mask.shape[0])
+    ploty = np.linspace(0, warped.shape[0] - 1, warped.shape[0])
     y_eval = np.max(ploty)
 
     # Define conversions in x and y from pixels space to meters
@@ -355,8 +355,6 @@ def process_image(image):
     right_fitx = right_fit[0] * ploty ** 2 + right_fit[1] * ploty + right_fit[2]
 
     # visualise the plotted windows and poly fit here if necessary
-    # out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
-    # out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
     # plt.imshow(out_img)
     # plt.plot(left_fitx, ploty, color='yellow')
     # plt.plot(right_fitx, ploty, color='yellow')
@@ -367,8 +365,8 @@ def process_image(image):
     # Example values: 632.1 m    626.2 m
     # plt.show()
 
-    # create new image and draw the new fitted lines
-    new = np.zeros_like(warped)
+    # create new image and draw the new fitted lines as an overlay
+    new = cv2.cvtColor(np.zeros_like(warped), cv2.COLOR_GRAY2RGB)
     points = np.hstack((np.array([np.transpose(np.vstack([left_fitx, ploty]))]),
                         np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])))
     cv2.fillPoly(new, points.astype(np.int32), (0, 255, 0))

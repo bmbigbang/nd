@@ -7,7 +7,7 @@ import time
 from sklearn.svm import LinearSVC
 from sklearn.preprocessing import StandardScaler
 from skimage.feature import hog
-from .lesson_functions import *
+from object_detection.lesson_functions import *
 # NOTE: the next import is only valid for scikit-learn version <= 0.17
 # for scikit-learn >= 0.18 use:
 # from sklearn.model_selection import train_test_split
@@ -88,15 +88,7 @@ def search_windows(img, windows, clf, scaler, color_space='RGB',
     return on_windows
 
 
-# Read in cars and notcars
-images = glob.glob('\output_images\*.jpeg')
-cars = []
-notcars = []
-for image in images:
-    if 'image' in image or 'extra' in image:
-        notcars.append(image)
-    else:
-        cars.append(image)
+
 
 # Reduce the sample size because
 # The quiz evaluator times out after 13s of CPU time
@@ -159,7 +151,8 @@ print('Test Accuracy of SVC = ', round(svc.score(X_test, y_test), 4))
 # Check the prediction time for a single sample
 t = time.time()
 
-image = mpimg.imread('bbox-example-image.jpg')
+image = cv2.imread(r'test_images/test1.jpg')
+image = cv2.cvtColor(image, getattr(cv2, 'COLOR_BGR2RGB'))
 draw_image = np.copy(image)
 
 # Uncomment the following line if you extracted training
@@ -180,5 +173,4 @@ hot_windows = search_windows(image, windows, svc, X_scaler, color_space=color_sp
 window_img = draw_boxes(draw_image, hot_windows, color=(0, 0, 255), thick=6)
 
 plt.imshow(window_img)
-
-
+plt.show()

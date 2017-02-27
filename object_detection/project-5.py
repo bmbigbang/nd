@@ -1,9 +1,11 @@
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.ndimage.measurements import label
 import cv2
-import glob
+import os
 import time
+import pickle
 from sklearn.svm import LinearSVC
 from sklearn.preprocessing import StandardScaler
 from skimage.feature import hog
@@ -14,94 +16,19 @@ from object_detection.lesson_functions import *
 from sklearn.cross_validation import train_test_split
 
 
-# Define a function to extract features from a single image window
-# This function is very similar to extract_features()
-# just for a single image rather than list of images
-def single_img_features(img, color_space='RGB', spatial_size=(32, 32),
-                        hist_bins=32, orient=9,
-                        pix_per_cell=8, cell_per_block=2, hog_channel=0,
-                        spatial_feat=True, hist_feat=True, hog_feat=True):
-    # 1) Define an empty list to receive features
-    img_features = []
-    # 2) Apply color conversion if other than 'RGB'
-    if color_space != 'RGB':
-        feature_image = cv2.cvtColor(img, getattr(cv2, 'COLOR_RGB2{}'.format(color_space)))
-    else:
-        feature_image = np.copy(img)
-    # 3) Compute spatial features if flag is set
-    if spatial_feat == True:
-        spatial_features = bin_spatial(feature_image, size=spatial_size)
-        # 4) Append features to list
-        img_features.append(spatial_features)
-    # 5) Compute histogram features if flag is set
-    if hist_feat == True:
-        hist_features = color_hist(feature_image, nbins=hist_bins)
-        # 6) Append features to list
-        img_features.append(hist_features)
-    # 7) Compute HOG features if flag is set
-    if hog_feat == True:
-        if hog_channel == 'ALL':
-            hog_features = []
-            for channel in range(feature_image.shape[2]):
-                hog_features.extend(get_hog_features(feature_image[:, :, channel],
-                                                     orient, pix_per_cell, cell_per_block,
-                                                     vis=False, feature_vec=True))
-        else:
-            hog_features = get_hog_features(feature_image[:, :, hog_channel], orient,
-                                            pix_per_cell, cell_per_block, vis=False, feature_vec=True)
-        # 8) Append features to list
-        img_features.append(hog_features)
+# load samples from preprocessed pickle
+with open('data.p', 'rb') as f:
+    p = pickle.load(f)
 
-    # 9) Return concatenated array of features
-    return np.concatenate(img_features)
-
-
-# Define a function you will pass an image
-# and the list of windows to be searched (output of slide_windows())
-def search_windows(img, windows, clf, scaler, color_space='RGB',
-                   spatial_size=(32, 32), hist_bins=32,
-                   hist_range=(0, 256), orient=9,
-                   pix_per_cell=8, cell_per_block=2,
-                   hog_channel=0, spatial_feat=True,
-                   hist_feat=True, hog_feat=True):
-    # 1) Create an empty list to receive positive detection windows
-    on_windows = []
-    # 2) Iterate over all windows in the list
-    for window in windows:
-        # 3) Extract the test window from original image
-        test_img = cv2.resize(img[window[0][1]:window[1][1], window[0][0]:window[1][0]], (64, 64))
-        # 4) Extract features for that window using single_img_features()
-        features = single_img_features(test_img, color_space=color_space,
-                                       spatial_size=spatial_size, hist_bins=hist_bins,
-                                       orient=orient, pix_per_cell=pix_per_cell,
-                                       cell_per_block=cell_per_block,
-                                       hog_channel=hog_channel, spatial_feat=spatial_feat,
-                                       hist_feat=hist_feat, hog_feat=hog_feat)
-        # 5) Scale extracted features to be fed to classifier
-        test_features = scaler.transform(np.array(features).reshape(1, -1))
-        # 6) Predict using your classifier
-        prediction = clf.predict(test_features)
-        # 7) If positive (prediction == 1) then save the window
-        if prediction == 1:
-            on_windows.append(window)
-    # 8) Return windows for positive detections
-    return on_windows
-
-
-
-
-# Reduce the sample size because
-# The quiz evaluator times out after 13s of CPU time
-sample_size = 500
-cars = cars[0:sample_size]
-notcars = notcars[0:sample_size]
+cars = p['cars']
+notcars = p['notcars']
 
 ### TODO: Tweak these parameters and see how the results change.
-color_space = 'RGB'  # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
+color_space = 'HLS'  # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
 orient = 9  # HOG orientations
 pix_per_cell = 8  # HOG pixels per cell
 cell_per_block = 2  # HOG cells per block
-hog_channel = 0  # Can be 0, 1, 2, or "ALL"
+hog_channel = "ALL"  # Can be 0, 1, 2, or "ALL"
 spatial_size = (16, 16)  # Spatial binning dimensions
 hist_bins = 16  # Number of histogram bins
 spatial_feat = True  # Spatial features on or off
@@ -151,26 +78,90 @@ print('Test Accuracy of SVC = ', round(svc.score(X_test, y_test), 4))
 # Check the prediction time for a single sample
 t = time.time()
 
-image = cv2.imread(r'test_images/test1.jpg')
-image = cv2.cvtColor(image, getattr(cv2, 'COLOR_BGR2RGB'))
-draw_image = np.copy(image)
 
-# Uncomment the following line if you extracted training
-# data from .png images (scaled 0 to 1 by mpimg) and the
-# image you are searching is a .jpg (scaled 0 to 255)
-# image = image.astype(np.float32)/255
+# Define a class to retain the heatmaps within the last n frames
+class Heatmap:
+    def __init__(self, n=6):
+        # number of images to average over
+        self.n = n
+        # keep the last heatmaps in memory
+        self.heatmap = []
 
-windows = slide_window(image, x_start_stop=[None, None], y_start_stop=y_start_stop,
-                       xy_window=(96, 96), xy_overlap=(0.5, 0.5))
 
-hot_windows = search_windows(image, windows, svc, X_scaler, color_space=color_space,
-                             spatial_size=spatial_size, hist_bins=hist_bins,
-                             orient=orient, pix_per_cell=pix_per_cell,
-                             cell_per_block=cell_per_block,
-                             hog_channel=hog_channel, spatial_feat=spatial_feat,
-                             hist_feat=hist_feat, hog_feat=hog_feat)
+def process_image(image):
+    # apply color conversion if other than 'RGB'
+    if color_space != 'RGB':
+        draw_image = cv2.cvtColor(image, getattr(cv2, 'COLOR_RGB2{}'.format(color_space)))
+    else:
+        draw_image = np.copy(image)
 
-window_img = draw_boxes(draw_image, hot_windows, color=(0, 0, 255), thick=6)
+    heatmap = np.zeros_like(image[:, :, 0]).astype(np.float)
 
-plt.imshow(window_img)
-plt.show()
+    # windows = slide_window(image, x_start_stop=[None, None], y_start_stop=y_start_stop,
+    #                        xy_window=window_size, xy_overlap=overlap)
+    ystart = 400
+    ystop = 656
+
+    hot_windows = []
+    for scale in (1.2, 1.3, 1.4, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7):
+        hot_windows.extend(find_cars(draw_image, ystart, ystop, scale, svc, X_scaler, orient, pix_per_cell,
+                                     cell_per_block, spatial_size, hist_bins))
+
+    # hot_windows = search_windows(image, windows, svc, X_scaler, color_space=color_space,
+    #                              spatial_size=spatial_size, hist_bins=hist_bins,
+    #                              orient=orient, pix_per_cell=pix_per_cell,
+    #                              cell_per_block=cell_per_block, hog_channel=hog_channel,
+    #                              spatial_feat=spatial_feat, hist_feat=hist_feat, hog_feat=hog_feat)
+
+    for box in hot_windows:
+        # Add += 1 for all pixels inside each bbox
+        # Assuming each "box" takes the form ((x1, y1), (x2, y2))
+        heatmap[box[0][1]:box[1][1], box[0][0]:box[1][0]] += 1
+
+        # window_img = draw_boxes(draw_image, hot_windows, color=(0, 0, 255), thick=6)
+
+    # store the heatmap and get the average before applying threshold
+    stored.heatmap.append(heatmap)
+    if len(stored.heatmap) > stored.n:
+        stored.heatmap.pop(0)
+    heatmap = np.add.reduce(stored.heatmap, 0) / len(stored.heatmap)
+
+    # Zero out pixels below the threshold of 3
+    heatmap[heatmap <= 3] = 0
+
+    # visualise the thresholded heatmap here if necessary
+    # plt.imshow(heatmap)
+    # plt.show()
+
+    labels = label(heatmap)
+
+    for car_number in range(1, labels[1] + 1):
+        # Find pixels with each car_number label value
+        nonzero = (labels[0] == car_number).nonzero()
+        # Identify x and y values of those pixels
+        nonzeroy = np.array(nonzero[0])
+        nonzerox = np.array(nonzero[1])
+        # Define a bounding box based on min/max x and y
+        bbox = ((np.min(nonzerox), np.min(nonzeroy)), (np.max(nonzerox), np.max(nonzeroy)))
+        # Draw the box on the image
+        cv2.rectangle(image, bbox[0], bbox[1], (0, 0, 255), 6)
+
+    # plt.imshow(image)
+    # plt.show()
+    return image
+
+for i in os.listdir('test_images'):
+    if not i.endswith(('jpg', 'png')):
+        continue
+    image = cv2.imread(r'test_images/{}'.format(i))
+    image = cv2.cvtColor(image, getattr(cv2, 'COLOR_BGR2RGB'))
+    stored = Heatmap()
+    cv2.imwrite('output_images/{}'.format(i), process_image(image))
+
+
+from moviepy.editor import VideoFileClip
+stored = Heatmap(n=8)
+output = 'processed_project_video.mp4'
+clip2 = VideoFileClip('project_video.mp4')
+clip = clip2.fl_image(process_image)
+clip.write_videofile(output, audio=False)

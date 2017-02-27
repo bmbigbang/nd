@@ -6,7 +6,9 @@ from sklearn.utils import shuffle
 
 
 def duplicates(set1):
+    # initialize set to store duplicate values
     dups = set([])
+    # create a map of vector lengths in three colour space
     norms = list(map(lambda x: np.tensordot(x, x, axes=3), set1))
     for i, x in enumerate(set1):
         if i in dups:
@@ -20,7 +22,7 @@ def duplicates(set1):
             if abs(norms[i] - norms[j]) > 5:
                 continue
             t = np.tensordot(x, y, axes=3)
-            if abs(t - norms[i]) < 5 and abs(t - norms[j]) < 5:
+            if abs(t - norms[i]) < 3 and abs(t - norms[j]) < 3:
                 dups.add(i)
                 break
     print("{0} dups found. Process Complete".format(len(dups)))
@@ -28,27 +30,27 @@ def duplicates(set1):
     return np.delete(set1, dups, 0)
 
 # Read in cars
-images = glob.glob('vehicles_smallset/vehicles_smallset/cars1/*.jpeg')
+images = glob.glob('vehicles/vehicles/GTI_Far/*.png')
 cars = []
 for image in images:
     cars.append(cv2.imread(image))
-images = glob.glob('vehicles_smallset/vehicles_smallset/cars2/*.jpeg')
+images = glob.glob('vehicles/vehiclest/GTI_Left/*.png')
 for image in images:
     cars.append(cv2.imread(image))
-images = glob.glob('vehicles_smallset/vehicles_smallset/cars3/*.jpeg')
+images = glob.glob('vehicles/vehicles/GTI_MiddleClose/*.png')
+for image in images:
+    cars.append(cv2.imread(image))
+images = glob.glob('vehicles/vehicles/GTI_Right/*.png')
 for image in images:
     cars.append(cv2.imread(image))
 dataset = duplicates(cars)
 
 # Read in  notcars
-images = glob.glob('non-vehicles_smallset/non-vehicles_smallset/notcars1/*.jpeg')
+images = glob.glob('non-vehicles/non-vehicles/Extras/*.png')
 notcars = []
 for image in images:
     notcars.append(cv2.imread(image))
-images = glob.glob('non-vehicles_smallset/non-vehicles_smallset/notcars2/*.jpeg')
-for image in images:
-    notcars.append(cv2.imread(image))
-images = glob.glob('non-vehicles_smallset/non-vehicles_smallset/notcars3/*.jpeg')
+images = glob.glob('non-vehicles/non-vehicles/GTI/*.png')
 for image in images:
     notcars.append(cv2.imread(image))
 dataset2 = duplicates(notcars)
@@ -60,13 +62,6 @@ if len(dataset2) < len(dataset):
 else:
     dataset2 = dataset2[:len(dataset)]
 
-# randomize and create training/test sets
-rand_state = np.random.randint(0, 100)
-features, labels = np.concatenate((dataset, dataset2)), [1 for i in dataset] + [0 for j in dataset2]
-features, labels = shuffle(features, labels, random_state=rand_state)
-X_test, y_test = features[:int(len(features) / 10)], labels[:int(len(features) / 10)]
-features, labels = features[int(len(features) / 10):], labels[int(len(features) / 10):]
-
 # save to pickle
 with open('data.p', 'wb') as f:
-    pickle.dump({'X_train': features, 'y_train': labels, 'X_test': X_test, 'y_test': y_test}, f)
+    pickle.dump({'cars': dataset, 'notcars': dataset2}, f)

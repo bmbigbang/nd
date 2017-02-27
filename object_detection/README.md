@@ -58,9 +58,15 @@ respective boxes drawn using scipy's label function (lines 136:147):
 ![alt text](output_images/heatmap2.png "heatmap2")
 ![alt text](output_images/example2.png "example for heatmap 2")
 
-Video Pipeline
+Video Pipeline and discussions
 ---
 
+An averaging of the heatmap over 8 frames is introduced, as described previously, to eliminate false positives.
 Find below the processed project video pipeline, as processed on lines 162:167
 
 [link to my video result](processed_project_video.mp4)
+
+Unfortunately the averaging also puts some parts of the cars to go below threshold and the boundaries to become less 
+pronounced. This deterioration of the classification boundary can also be caused by the scale of the boundaries of the 
+car which are no longer rectangular, even though our training is performed on exclusively rectangular images. So the sliding
+ may have to account for rectangular window shapes.

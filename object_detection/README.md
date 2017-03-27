@@ -64,7 +64,7 @@ Video Pipeline and discussions
 An averaging of the heatmap over 8 frames is introduced, as described previously, to eliminate false positives.
 Find below the processed project video pipeline, as processed on lines 162:167
 
-[link to my video result](processed_project_video.mp4)
+[link to my video result](https://drive.google.com/open?id=0B8oLHWPlmk8iRDhuTlhfQlN0M2s)
 
 Unfortunately the averaging also puts some parts of the cars to go below threshold and the boundaries to become less 
 pronounced. This deterioration of the classification boundary can also be caused by the scale of the boundaries of the 
